@@ -416,7 +416,11 @@ Edit: `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-
       "args": ["/path/to/smartsheet-server/build/index.js"],
       "env": {
         "PYTHON_PATH": "/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3",
-        "SMARTSHEET_API_KEY": "your-api-key"
+        "SMARTSHEET_API_KEY": "your-api-key",
+        "AZURE_OPENAI_API_KEY": "your-azure-openai-key",
+        "AZURE_OPENAI_API_BASE": "your-azure-openai-endpoint",
+        "AZURE_OPENAI_API_VERSION": "your-api-version",
+        "AZURE_OPENAI_DEPLOYMENT": "your-deployment-name"
       },
       "disabled": false,
       "autoApprove": [
@@ -427,7 +431,11 @@ Edit: `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-
         "smartsheet_search",
         "smartsheet_add_column",
         "smartsheet_delete_column",
-        "smartsheet_rename_column"
+        "smartsheet_rename_column",
+        "smartsheet_bulk_update",
+        "start_batch_analysis",
+        "get_job_status",
+        "cancel_batch_analysis"
       ]
     }
   }
@@ -446,7 +454,11 @@ Edit: `~/Library/Application Support/Claude/claude_desktop_config.json`
       "args": ["/path/to/smartsheet-server/build/index.js"],
       "env": {
         "PYTHON_PATH": "/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3",
-        "SMARTSHEET_API_KEY": "your-api-key"
+        "SMARTSHEET_API_KEY": "your-api-key",
+        "AZURE_OPENAI_API_KEY": "your-azure-openai-key",
+        "AZURE_OPENAI_API_BASE": "your-azure-openai-endpoint",
+        "AZURE_OPENAI_API_VERSION": "your-api-version",
+        "AZURE_OPENAI_DEPLOYMENT": "your-deployment-name"
       },
       "disabled": false,
       "autoApprove": [
@@ -457,7 +469,11 @@ Edit: `~/Library/Application Support/Claude/claude_desktop_config.json`
         "smartsheet_search",
         "smartsheet_add_column",
         "smartsheet_delete_column",
-        "smartsheet_rename_column"
+        "smartsheet_rename_column",
+        "smartsheet_bulk_update",
+        "start_batch_analysis",
+        "get_job_status",
+        "cancel_batch_analysis"
       ]
     }
   }
