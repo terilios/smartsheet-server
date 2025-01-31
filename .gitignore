@@ -48,3 +48,6 @@ yarn-error.log*
 # Project specific
 .smartsheet_jobs/
 test_*.py
+README.pdf
+bootstrap.md
+resource-plan.md

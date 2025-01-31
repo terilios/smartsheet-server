@@ -94,16 +94,14 @@ class SmartsheetOperations:
                 if hasattr(column, attr):
                     info["debug"][attr] = str(getattr(column, attr))
 
-            # 1) Get base type from _type_ (if available)
-            base_type = None
-            if hasattr(column, '_type_'):
-                raw_base_type = str(getattr(column, '_type_'))
-                if raw_base_type and raw_base_type.lower() != 'none':
-                    base_type = raw_base_type.strip()
-            # Use base_type or default if not found
-            if base_type:
-                info["base_type"] = base_type
-                info["type"] = base_type  # Tentative final type
+            # 1) Get column type from debug info first
+            if '_type_' in info["debug"]:
+                raw_type = info["debug"]['_type_']
+                if raw_type and raw_type.lower() != 'none':
+                    info["type"] = raw_type.strip()
+                    # Handle PICKLIST type
+                    if info["type"] == "PICKLIST":
+                        self._process_picklist_options(column, info)
 
             # 2) Detect system column type (will override base type if recognized)
             system_type = None
@@ -159,8 +157,12 @@ class SmartsheetOperations:
     def get_sheet_info(self, sheet_id: str) -> Dict[str, Any]:
         """Get sheet information including columns and sample data."""
         try:
-            # Get the sheet
-            sheet = self.client.Sheets.get_sheet(sheet_id)
+            # Get the sheet with level parameter for complex column types
+            sheet = self.client.Sheets.get_sheet(
+                sheet_id,
+                level=2,
+                include='objectValue'
+            )
             
             # Get columns
             columns = sheet.columns
@@ -586,11 +588,16 @@ class SmartsheetOperations:
                     if value is None:
                         continue
                     
-                    # Convert value to string for searching
-                    str_value = str(value)
-                    
-                    # Look for matches
-                    matches_found = list(pattern_re.finditer(str_value))
+                    # For PICKLIST columns, do exact value comparison
+                    if column_type == "PICKLIST":
+                        if str(value) == pattern:
+                            matches_found = [type('Match', (), {'group': lambda x: value, 'start': lambda: 0, 'end': lambda: len(str(value))})]
+                        else:
+                            matches_found = []
+                    else:
+                        # For other columns, use regex search
+                        str_value = str(value)
+                        matches_found = list(pattern_re.finditer(str_value))
                     if matches_found:
                         for match in matches_found:
                             row_matches.append({
@@ -609,8 +616,12 @@ class SmartsheetOperations:
                         'matches': row_matches
                     })
             
+            # Extract row IDs from matches
+            matched_row_ids = [match['row_id'] for match in matches]
+            
             return {
-                'matches': matches,
+                'row_ids': matched_row_ids,  # Primary result - list of matching row IDs
+                'matches': matches,  # Detailed match information
                 'metadata': {
                     'sheet_info': {
                         'total_rows': len(sheet.rows),
