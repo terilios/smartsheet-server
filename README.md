@@ -406,7 +406,25 @@ The server requires proper configuration in your MCP settings. You can use it wi
 
 #### 2. Configure for Cline
 
-Edit: `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
+The configuration path depends on your operating system:
+
+**macOS**:
+
+```
+~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+```
+
+**Windows**:
+
+```
+%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json
+```
+
+**Linux**:
+
+```
+~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json
+```
 
 ```json
 {
@@ -444,7 +462,25 @@ Edit: `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-
 
 #### 3. Configure for Claude Desktop (Optional)
 
-Edit: `~/Library/Application Support/Claude/claude_desktop_config.json`
+The configuration path depends on your operating system:
+
+**macOS**:
+
+```
+~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+**Windows**:
+
+```
+%APPDATA%\Claude\claude_desktop_config.json
+```
+
+**Linux**:
+
+```
+~/.config/Claude/claude_desktop_config.json
+```
 
 ```json
 {
@@ -482,7 +518,9 @@ Edit: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ### Starting the Server
 
-The server will start automatically when Cline or Claude Desktop needs it. However, you can also start it manually for testing:
+The server will start automatically when Cline or Claude Desktop needs it. However, you can also start it manually for testing.
+
+**macOS/Linux**:
 
 ```bash
 # Activate the environment
@@ -490,6 +528,18 @@ conda activate cline_mcp_env
 
 # Start the server
 PYTHON_PATH=/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3 SMARTSHEET_API_KEY=your-api-key node build/index.js
+```
+
+**Windows**:
+
+```cmd
+:: Activate the environment
+conda activate cline_mcp_env
+
+:: Start the server
+set PYTHON_PATH=C:\Users\[username]\anaconda3\envs\cline_mcp_env\python.exe
+set SMARTSHEET_API_KEY=your-api-key
+node build\index.js
 ```
 
 ### Verifying Installation
