@@ -74,27 +74,29 @@ The server integrates with:
 The server implements a bridge architecture between MCP and Smartsheet:
 
 ```mermaid
-graph TB
-    subgraph "MCP Layer"
+graph LR
+    subgraph MCP[MCP Layer]
+        direction TB
         A[Client Request] --> B[TypeScript MCP Server]
         B --> C[Tool Registry]
         B --> D[Config Management]
     end
 
-    subgraph "CLI Layer"
+    subgraph CLI[CLI Layer]
+        direction TB
         E[Python CLI] --> F[Argument Parser]
         F --> G[Command Router]
         G --> H[JSON Formatter]
     end
 
-    subgraph "Core Operations"
+    subgraph Core[Core Operations]
+        direction TB
         I[Smartsheet API Client] --> J[Column Manager]
         J --> K[Data Validator]
         J --> L[Formula Parser]
     end
 
-    B --> E
-    G --> I
+    MCP --> CLI --> Core
 
     style A fill:#f9f,stroke:#333
     style I fill:#bbf,stroke:#333
