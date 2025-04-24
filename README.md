@@ -2,6 +2,10 @@
 
 A Model Context Protocol (MCP) server that provides seamless integration with Smartsheet, enabling automated operations on Smartsheet documents through a standardized interface. This server bridges the gap between AI-powered automation tools and Smartsheet's powerful collaboration platform.
 
+<a href="https://glama.ai/mcp/servers/k6qv4zylx2">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/k6qv4zylx2/badge" alt="Smartsheet Server MCP server" />
+</a>
+
 ## Overview
 
 The Smartsheet MCP Server is designed to facilitate intelligent interactions with Smartsheet, providing a robust set of tools for document management, data operations, and column customization. It serves as a critical component in automated workflows, enabling AI systems to programmatically interact with Smartsheet data while maintaining data integrity and enforcing business rules.
@@ -722,7 +726,7 @@ const cancel = await use_mcp_tool({
 
 ### Managing Columns
 
-````typescript
+```typescript
 // Add a new column
 const result = await use_mcp_tool({
   server_name: "smartsheet",
@@ -759,6 +763,7 @@ const result = await use_mcp_tool({
     update_references: true, // Optional, default true
   },
 });
+```
 
 ### Conditional Bulk Updates
 
@@ -825,7 +830,7 @@ const result = await use_mcp_tool({
     }]
   }
 });
-````
+```
 
 #### Type-Specific Comparisons
 
@@ -1038,15 +1043,13 @@ The bulk update operation provides:
    - Detailed error information
    - Per-row failure details
 
-````
-
 ## Development
 
 For development with auto-rebuild:
 
 ```bash
 npm run watch
-````
+```
 
 ### Debugging
 
