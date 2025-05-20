@@ -1,0 +1,33 @@
+Metadata-Version: 2.2
+Name: smartsheet_ops
+Version: 0.1.0
+Summary: Healthcare analytics operations for Smartsheet
+Home-page: https://github.com/terilios/smartsheet-server
+Author: Timothy Driscoll
+Author-email: timothy.driscoll@example.com
+Keywords: smartsheet healthcare analytics pediatrics clinical-research
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Healthcare Industry
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Medical Science Apps.
+Classifier: Topic :: Office/Business
+Requires-Python: >=3.8
+Requires-Dist: smartsheet-python-sdk>=2.0.0
+Requires-Dist: aiohttp>=3.8.0
+Requires-Dist: tiktoken>=0.5.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: openai>=1.0.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
