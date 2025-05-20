@@ -17,12 +17,15 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Smartsheet Operations CLI')
     parser.add_argument('--api-key', required=True, help='Smartsheet API key')
     parser.add_argument('--operation', required=True, 
-                       choices=['get_column_map', 'add_rows', 'check_duplicate', 'update_rows', 'delete_rows', 'search',
+                       choices=['get_column_map', 'add_rows', 'check_duplicate', 'update_rows', 'delete_rows', 'search', 'get_all_row_ids',
                                'add_column', 'delete_column', 'rename_column', 'bulk_update',
-                               'start_analysis', 'cancel_analysis', 'get_job_status'], 
+                               'start_analysis', 'cancel_analysis', 'get_job_status',
+                               'list_workspaces', 'get_workspace', 'create_workspace',
+                               'create_sheet_in_workspace', 'list_workspace_sheets'], 
                        help='Operation to perform')
-    parser.add_argument('--sheet-id', required=True, help='Smartsheet sheet ID')
-    parser.add_argument('--data', help='JSON data for row operations')
+    parser.add_argument('--sheet-id', help='Smartsheet sheet ID')
+    parser.add_argument('--workspace-id', help='Smartsheet workspace ID')
+    parser.add_argument('--data', help='JSON data for operations')
     return parser.parse_args()
 
 def check_for_duplicate(ops, sheet_id, new_row_data):
@@ -50,7 +53,7 @@ def check_for_duplicate(ops, sheet_id, new_row_data):
             
     return False
 
-def main():
+async def main():
     try:
         args = parse_args()
         
@@ -183,30 +186,32 @@ def main():
             )
             print(json.dumps(result, indent=2))
             
+        elif args.operation == 'get_all_row_ids':
+            # Fetch all row IDs from the specified sheet
+            sheet = ops.client.Sheets.get_sheet(args.sheet_id)
+            row_ids = [str(row.id) for row in sheet.rows]
+            result = {
+                "operation": "get_all_row_ids",
+                "row_ids": row_ids
+            }
+            print(json.dumps(result, indent=2))
+            
         elif args.operation == 'start_analysis':
             if not args.data:
                 raise ValueError("--data is required for start_analysis operation")
             data = json.loads(args.data)
-            if not isinstance(data, dict) or not all(k in data for k in ['type', 'sourceColumns', 'targetColumn']):
-                raise ValueError("Invalid data format. Expected: {'type': str, 'sourceColumns': [...], 'targetColumn': str, 'rowIds': [...] (optional), 'customGoal': str (optional)}")
+            if not isinstance(data, dict) or 'type' not in data or 'sourceColumns' not in data or 'targetColumn' not in data:
+                raise ValueError("Invalid data format. Expected: {'type': str, 'sourceColumns': [...], 'targetColumn': str, 'rowIds': [...], 'customGoal': str?}")
             
-            # Convert type string to enum
-            analysis_type = AnalysisType(data['type'])
-            
-            # For custom analysis type, ensure customGoal is provided
-            if analysis_type == AnalysisType.CUSTOM and 'customGoal' not in data:
-                raise ValueError("customGoal is required for custom analysis type")
-
-            # Run analysis asynchronously with optional row_ids
-            result = asyncio.run(processor.start_analysis(
-                sheet_id=args.sheet_id,
-                analysis_type=analysis_type,
-                source_columns=data['sourceColumns'],
-                target_column=data['targetColumn'],
-                row_ids=data.get('rowIds'),  # Now optional
-                smartsheet_client=ops.client,
-                custom_goal=data.get('customGoal') if analysis_type == AnalysisType.CUSTOM else None
-            ))
+            result = await processor.start_analysis(
+                args.sheet_id,
+                AnalysisType(data['type']),
+                data['sourceColumns'],
+                data['targetColumn'],
+                data.get('rowIds'),
+                ops.client,
+                data.get('customGoal')
+            )
             print(json.dumps(result, indent=2))
             
         elif args.operation == 'cancel_analysis':
@@ -226,7 +231,43 @@ def main():
             if not isinstance(data, dict) or 'jobId' not in data:
                 raise ValueError("Invalid data format. Expected: {'jobId': str}")
             
-            result = processor.get_job_status(data['jobId'])
+            result = processor.get_job_status(data['jobId'], args.sheet_id)
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'list_workspaces':
+            result = ops.list_workspaces()
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'get_workspace':
+            if not args.workspace_id:
+                raise ValueError("--workspace-id is required for get_workspace operation")
+            result = ops.get_workspace(args.workspace_id)
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'create_workspace':
+            if not args.data:
+                raise ValueError("--data is required for create_workspace operation")
+            data = json.loads(args.data)
+            if not isinstance(data, dict) or 'name' not in data:
+                raise ValueError("Invalid data format. Expected: {'name': str}")
+            result = ops.create_workspace(data['name'])
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'create_sheet_in_workspace':
+            if not args.workspace_id:
+                raise ValueError("--workspace-id is required for create_sheet_in_workspace operation")
+            if not args.data:
+                raise ValueError("--data is required for create_sheet_in_workspace operation")
+            data = json.loads(args.data)
+            if not isinstance(data, dict) or 'name' not in data or 'columns' not in data:
+                raise ValueError("Invalid data format. Expected: {'name': str, 'columns': [...]}")
+            result = ops.create_sheet_in_workspace(args.workspace_id, data)
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'list_workspace_sheets':
+            if not args.workspace_id:
+                raise ValueError("--workspace-id is required for list_workspace_sheets operation")
+            result = ops.list_workspace_sheets(args.workspace_id)
             print(json.dumps(result, indent=2))
         
     except Exception as e:
@@ -239,4 +280,6 @@ def main():
         sys.exit(1)
 
 if __name__ == '__main__':
-    main()
+    import multiprocessing
+    multiprocessing.freeze_support()
+    asyncio.run(main())

@@ -9,8 +9,14 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { exec, ExecOptions } from 'child_process';
 import path from 'path';
+
+// Configure execution options
+const execOptions: ExecOptions = {
+  maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+  timeout: 300000 // 5 minutes timeout
+};
 
 const execAsync = promisify(exec);
 
@@ -172,6 +178,20 @@ class SmartsheetServer {
         {
           name: 'get_column_map',
           description: 'Get column mapping and sample data from a Smartsheet',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              sheet_id: {
+                type: 'string',
+                description: 'Smartsheet sheet ID',
+              }
+            },
+            required: ['sheet_id'],
+          },
+        },
+        {
+          name: 'get_sheet_info',
+          description: 'Get column mapping and sample data from a Smartsheet (alias for get_column_map)',
           inputSchema: {
             type: 'object',
             properties: {
@@ -475,6 +495,114 @@ class SmartsheetServer {
             },
             required: ['sheet_id', 'rules']
           }
+        },
+        {
+          name: 'get_all_row_ids',
+          description: 'Get all row IDs from a Smartsheet',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              sheet_id: {
+                type: 'string',
+                description: 'Smartsheet sheet ID'
+              }
+            },
+            required: ['sheet_id']
+          }
+        },
+        {
+          name: 'list_workspaces',
+          description: 'List all accessible workspaces',
+          inputSchema: {
+            type: 'object',
+            properties: {}
+          }
+        },
+        {
+          name: 'get_workspace',
+          description: 'Get details of a specific workspace',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              workspace_id: {
+                type: 'string',
+                description: 'Workspace ID'
+              }
+            },
+            required: ['workspace_id']
+          }
+        },
+        {
+          name: 'create_workspace',
+          description: 'Create a new workspace',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Workspace name'
+              }
+            },
+            required: ['name']
+          }
+        },
+        {
+          name: 'create_sheet_in_workspace',
+          description: 'Create a sheet in a workspace',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              workspace_id: {
+                type: 'string',
+                description: 'Workspace ID'
+              },
+              name: {
+                type: 'string',
+                description: 'Sheet name'
+              },
+              columns: {
+                type: 'array',
+                description: 'Column definitions',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: {
+                      type: 'string',
+                      description: 'Column title'
+                    },
+                    type: {
+                      type: 'string',
+                      description: 'Column type',
+                      enum: ['TEXT_NUMBER', 'DATE', 'CHECKBOX', 'PICKLIST', 'CONTACT_LIST']
+                    },
+                    options: {
+                      type: 'array',
+                      description: 'Options for PICKLIST type',
+                      items: {
+                        type: 'string'
+                      }
+                    }
+                  },
+                  required: ['title', 'type']
+                }
+              }
+            },
+            required: ['workspace_id', 'name', 'columns']
+          }
+        },
+        {
+          name: 'list_workspace_sheets',
+          description: 'List all sheets in a workspace',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              workspace_id: {
+                type: 'string',
+                description: 'Workspace ID'
+              }
+            },
+            required: ['workspace_id']
+          }
         }
       ],
     }));
@@ -491,9 +619,15 @@ class SmartsheetServer {
           );
         }
 
+        // Extract sheet_id for operations that require it
         const sheet_id = args.sheet_id as string;
         
-        if (!sheet_id) {
+        // Only validate sheet_id for operations that require it
+        // Workspace operations don't require sheet_id
+        const requiresSheetId = !['list_workspaces', 'get_workspace', 'create_workspace', 
+                                'create_sheet_in_workspace', 'list_workspace_sheets'].includes(name);
+        
+        if (requiresSheetId && !sheet_id) {
           throw new McpError(
             ErrorCode.InvalidParams,
             'Missing required parameter: sheet_id'
@@ -503,6 +637,7 @@ class SmartsheetServer {
         // Map tool names to CLI operations
         const operationMap: Record<string, string> = {
           'get_column_map': 'get_column_map',
+          'get_sheet_info': 'get_column_map', // Alias for get_column_map
           'smartsheet_write': 'add_rows',
           'smartsheet_update': 'update_rows',
           'smartsheet_delete': 'delete_rows',
@@ -513,7 +648,13 @@ class SmartsheetServer {
           'smartsheet_bulk_update': 'bulk_update',
           'start_batch_analysis': 'start_analysis',
           'cancel_batch_analysis': 'cancel_analysis',
-          'get_job_status': 'get_job_status'
+          'get_job_status': 'get_job_status',
+          'get_all_row_ids': 'get_all_row_ids',
+          'list_workspaces': 'list_workspaces',
+          'get_workspace': 'get_workspace',
+          'create_workspace': 'create_workspace',
+          'create_sheet_in_workspace': 'create_sheet_in_workspace',
+          'list_workspace_sheets': 'list_workspace_sheets'
         };
 
         const operation = operationMap[name];
@@ -530,7 +671,26 @@ class SmartsheetServer {
           AZURE_OPENAI_API_BASE: process.env.AZURE_OPENAI_API_BASE,
           AZURE_OPENAI_API_VERSION: process.env.AZURE_OPENAI_API_VERSION
         };
-        let command = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --sheet-id "${sheet_id}" --operation ${operation}`;
+        
+        // Determine if we need sheet_id or workspace_id
+        let command = '';
+        if (['list_workspaces', 'create_workspace'].includes(name)) {
+          // These operations don't require sheet_id or workspace_id
+          command = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --operation ${operation}`;
+        } else if (['get_workspace', 'create_sheet_in_workspace', 'list_workspace_sheets'].includes(name)) {
+          // These operations require workspace_id instead of sheet_id
+          const workspace_id = args.workspace_id as string;
+          if (!workspace_id) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              'Missing required parameter: workspace_id'
+            );
+          }
+          command = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --workspace-id "${workspace_id}" --operation ${operation}`;
+        } else {
+          // Standard operations that require sheet_id
+          command = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --sheet-id "${sheet_id}" --operation ${operation}`;
+        }
         
         // Add data based on operation
         if (name === 'smartsheet_write') {
@@ -629,9 +789,42 @@ class SmartsheetServer {
           const data = { jobId };
           command += ` --data '${JSON.stringify(data)}'`;
         }
+        else if (name === 'create_workspace') {
+          const name = args.name as string;
+          if (!name) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              'Missing required parameter: name'
+            );
+          }
+          const data = { name };
+          command += ` --data '${JSON.stringify(data)}'`;
+        }
+        else if (name === 'create_sheet_in_workspace') {
+          const sheetName = args.name as string;
+          const columns = args.columns as Array<{
+            title: string;
+            type: string;
+            options?: string[];
+          }>;
+          
+          if (!sheetName || !columns) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              'Missing required parameters for create_sheet_in_workspace: name and columns'
+            );
+          }
+          
+          const data = { 
+            name: sheetName,
+            columns 
+          };
+          command += ` --data '${JSON.stringify(data)}'`;
+        }
         
-        // Execute command with environment variables
+        // Execute command with environment variables and increased buffer size
         const { stdout, stderr } = await execAsync(command, {
+          ...execOptions,
           env: {
             ...process.env,  // Include existing environment
             ...env  // Add Azure OpenAI variables
@@ -639,33 +832,70 @@ class SmartsheetServer {
           shell: '/bin/bash'  // Use bash shell to ensure environment variables are passed correctly
         });
         
-        // Try to parse stdout as JSON
-        try {
-          const result = JSON.parse(stdout);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  ...result,
-                  timestamp: new Date().toISOString(),
-                  execution_source: 'mcp_server'
-                }, null, 2),
-              },
-            ],
-          };
-        } catch (e) {
-          // If stdout is not valid JSON or there's an error, return error
-          return {
-            content: [
-              {
-                type: 'text',
-                text: stderr || stdout,
-              },
-            ],
-            isError: true,
-          };
-        }
+            // Try to parse stdout as JSON
+            try {
+                const result = JSON.parse(stdout);
+                
+                // Handle the new response format
+                if (result.hasOwnProperty('success')) {
+                    if (result.success) {
+                        // Operation succeeded, possibly with warnings
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: JSON.stringify({
+                                        ...result,
+                                        timestamp: new Date().toISOString(),
+                                        execution_source: 'mcp_server'
+                                    }, null, 2),
+                                },
+                            ],
+                            // Don't set isError for warnings
+                        };
+                    } else {
+                        // Operation failed with error
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: JSON.stringify({
+                                        ...result,
+                                        timestamp: new Date().toISOString(),
+                                        execution_source: 'mcp_server'
+                                    }, null, 2),
+                                },
+                            ],
+                            isError: true,
+                        };
+                    }
+                }
+                
+                // Handle legacy format
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify({
+                                ...result,
+                                timestamp: new Date().toISOString(),
+                                execution_source: 'mcp_server'
+                            }, null, 2),
+                        },
+                    ],
+                };
+            } catch (e) {
+                // If stdout is not valid JSON or there's an error, return error
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: stderr || stdout,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
       } catch (error: any) {
         const errorMessage = error.message || 'Unknown error occurred';
         throw new McpError(

@@ -192,10 +192,45 @@ The server integrates with:
     - Comprehensive error reporting
 
 12. `cancel_batch_analysis` (Job Control)
+
     - Cancels running batch analysis jobs
     - Graceful process termination
     - Maintains data consistency
     - Returns final job status
+
+13. `list_workspaces` (Workspace Management)
+
+    - Lists all accessible workspaces
+    - Returns workspace IDs, names, and permalinks
+    - Includes access level information
+    - Supports organization-wide workspace discovery
+
+14. `get_workspace` (Workspace Management)
+
+    - Retrieves detailed workspace information
+    - Returns contained sheets, folders, reports, and dashboards
+    - Provides access level and permission details
+    - Supports workspace content exploration
+
+15. `create_workspace` (Workspace Management)
+
+    - Creates a new workspace with specified name
+    - Returns the new workspace ID and confirmation
+    - Enables programmatic workspace organization
+    - Supports migration from deprecated folder endpoints
+
+16. `create_sheet_in_workspace` (Workspace Management)
+
+    - Creates a new sheet directly in a workspace
+    - Supports all column types and configurations
+    - Returns the new sheet ID and details
+    - Enables programmatic sheet creation and organization
+
+17. `list_workspace_sheets` (Workspace Management)
+    - Lists all sheets in a specific workspace
+    - Returns sheet IDs, names, and permalinks
+    - Includes creation and modification timestamps
+    - Supports workspace content discovery
 
 ### Key Capabilities
 
@@ -358,7 +393,12 @@ The configuration path depends on your operating system:
         "smartsheet_bulk_update",
         "start_batch_analysis",
         "get_job_status",
-        "cancel_batch_analysis"
+        "cancel_batch_analysis",
+        "list_workspaces",
+        "get_workspace",
+        "create_workspace",
+        "create_sheet_in_workspace",
+        "list_workspace_sheets"
       ]
     }
   }
@@ -551,6 +591,63 @@ const result = await use_mcp_tool({
     type: "sentiment",
     sourceColumns: ["Patient_Feedback"],
     targetColumn: "Satisfaction_Score",
+  },
+});
+```
+
+### Workspace Management Examples
+
+```typescript
+// List all accessible workspaces
+const workspaces = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "list_workspaces",
+  arguments: {},
+});
+
+// Get details of a specific workspace
+const workspace = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_workspace",
+  arguments: {
+    workspace_id: "6621332407379844",
+  },
+});
+
+// Create a new workspace
+const newWorkspace = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "create_workspace",
+  arguments: {
+    name: "Project Management",
+  },
+});
+
+// Create a sheet in a workspace
+const newSheet = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "create_sheet_in_workspace",
+  arguments: {
+    workspace_id: "6621332407379844",
+    name: "Task Tracker",
+    columns: [
+      { title: "Task Name", type: "TEXT_NUMBER" },
+      { title: "Due Date", type: "DATE" },
+      {
+        title: "Status",
+        type: "PICKLIST",
+        options: ["Not Started", "In Progress", "Completed"],
+      },
+    ],
+  },
+});
+
+// List all sheets in a workspace
+const sheets = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "list_workspace_sheets",
+  arguments: {
+    workspace_id: "6621332407379844",
   },
 });
 ```

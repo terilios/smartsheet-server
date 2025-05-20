@@ -1,7 +1,7 @@
 import smartsheet
 import json
 import re
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 
 # System column types in their exact API form
 SYSTEM_COLUMN_TYPES = {
@@ -692,22 +692,44 @@ class SmartsheetOperations:
                 new_column = result[0]
                 try:
                     column_info = self.get_column_info(new_column)
-                    return {
+                    success_response = {
+                        "success": True,
                         "message": "Successfully added column",
                         "column": column_info
                     }
+                    
+                    # Check for validation warnings
+                    if column_options.get('index') is not None:
+                        success_response["warnings"] = [{
+                            "type": "validation",
+                            "message": "Column index validation warning - column was added successfully but index may have been adjusted"
+                        }]
+                    return success_response
                 except Exception as e:
-                    # If we fail to get column info but the column was added, return success
+                    # If we fail to get column info but the column was added, return success with warning
                     return {
+                        "success": True,
                         "message": "Successfully added column",
-                        "column_id": str(new_column.id_) if hasattr(new_column, 'id_') else None
+                        "column_id": str(new_column.id_) if hasattr(new_column, 'id_') else None,
+                        "warnings": [{
+                            "type": "info",
+                            "message": "Column added but detailed info unavailable"
+                        }]
                     }
             else:
                 # If we get here, the column wasn't added
-                raise RuntimeError("Failed to add column")
+                return {
+                    "success": False,
+                    "message": "Failed to add column",
+                    "error": "No column data returned from API"
+                }
 
         except Exception as e:
-            raise RuntimeError(f"Failed to add column: {str(e)}")
+            return {
+                "success": False,
+                "message": "Failed to add column",
+                "error": str(e)
+            }
 
     def delete_column(
         self,
@@ -1070,3 +1092,271 @@ class SmartsheetOperations:
 
         except Exception as e:
             raise RuntimeError(f"Failed to validate row IDs: {str(e)}")
+            
+    # Workspace Operations
+    
+    def list_workspaces(self) -> Dict[str, Any]:
+        """
+        List all accessible workspaces.
+        
+        Returns:
+            Dict containing list of workspaces with their IDs, names, and permalinks
+        
+        Raises:
+            RuntimeError: If listing workspaces fails
+        """
+        try:
+            response = self.client.Workspaces.list_workspaces()
+            workspaces = []
+            
+            for workspace in response.data:
+                # Convert all values to their string representation to ensure JSON serialization
+                workspace_data = {
+                    "id": str(workspace.id),
+                    "name": str(workspace.name),
+                    "permalink": str(workspace.permalink) if hasattr(workspace, 'permalink') else None
+                }
+                
+                # Handle access_level which might be an EnumeratedValue
+                if hasattr(workspace, 'access_level'):
+                    workspace_data["access_level"] = str(workspace.access_level)
+                
+                workspaces.append(workspace_data)
+                
+            return {
+                "workspaces": workspaces,
+                "total_count": len(workspaces)
+            }
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to list workspaces: {str(e)}")
+    
+    def get_workspace(self, workspace_id: Union[str, int]) -> Dict[str, Any]:
+        """
+        Get details of a specific workspace.
+        
+        Args:
+            workspace_id: Workspace ID
+            
+        Returns:
+            Dict containing workspace details including sheets, folders, and reports
+            
+        Raises:
+            RuntimeError: If getting workspace fails
+        """
+        try:
+            # Convert workspace_id to int if it's a string
+            if isinstance(workspace_id, str):
+                workspace_id = int(workspace_id)
+                
+            workspace = self.client.Workspaces.get_workspace(workspace_id)
+            
+            # Process sheets
+            sheets = []
+            if hasattr(workspace, 'sheets') and workspace.sheets:
+                for sheet in workspace.sheets:
+                    sheets.append({
+                        "id": str(sheet.id),
+                        "name": str(sheet.name),
+                        "permalink": str(sheet.permalink) if hasattr(sheet, 'permalink') else None
+                    })
+            
+            # Process folders
+            folders = []
+            if hasattr(workspace, 'folders') and workspace.folders:
+                for folder in workspace.folders:
+                    folders.append({
+                        "id": str(folder.id),
+                        "name": str(folder.name)
+                    })
+            
+            # Process reports
+            reports = []
+            if hasattr(workspace, 'reports') and workspace.reports:
+                for report in workspace.reports:
+                    reports.append({
+                        "id": str(report.id),
+                        "name": str(report.name)
+                    })
+            
+            # Process sights (dashboards)
+            sights = []
+            if hasattr(workspace, 'sights') and workspace.sights:
+                for sight in workspace.sights:
+                    sights.append({
+                        "id": str(sight.id),
+                        "name": str(sight.name)
+                    })
+            
+            # Convert all values to strings to ensure JSON serialization
+            result = {
+                "id": str(workspace.id),
+                "name": str(workspace.name),
+                "permalink": str(workspace.permalink) if hasattr(workspace, 'permalink') else None,
+                "sheets": sheets,
+                "folders": folders,
+                "reports": reports,
+                "sights": sights
+            }
+            
+            # Handle access_level which might be an EnumeratedValue
+            if hasattr(workspace, 'access_level'):
+                result["access_level"] = str(workspace.access_level)
+            
+            return result
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to get workspace: {str(e)}")
+    
+    def create_workspace(self, name: str) -> Dict[str, Any]:
+        """
+        Create a new workspace.
+        
+        Args:
+            name: Name for the new workspace
+            
+        Returns:
+            Dict containing success message and new workspace ID
+            
+        Raises:
+            RuntimeError: If creating workspace fails
+        """
+        try:
+            # Create workspace object
+            workspace = smartsheet.models.Workspace({
+                'name': name
+            })
+            
+            # Create the workspace
+            response = self.client.Workspaces.create_workspace(workspace)
+            
+            return {
+                "success": True,
+                "message": "Successfully created workspace",
+                "workspace_id": str(response.result.id),
+                "name": response.result.name
+            }
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to create workspace: {str(e)}")
+    
+    def create_sheet_in_workspace(self, workspace_id: Union[str, int], sheet_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a sheet in a workspace.
+        
+        Args:
+            workspace_id: Workspace ID
+            sheet_data: Sheet configuration including name and columns
+                {
+                    'name': str,
+                    'columns': [
+                        {
+                            'title': str,
+                            'type': str,
+                            'options': List[str] (optional)
+                        },
+                        ...
+                    ]
+                }
+                
+        Returns:
+            Dict containing success message and new sheet ID
+            
+        Raises:
+            RuntimeError: If creating sheet fails
+        """
+        try:
+            # Convert workspace_id to int if it's a string
+            if isinstance(workspace_id, str):
+                workspace_id = int(workspace_id)
+            
+            # Validate sheet data
+            if not sheet_data.get('name'):
+                raise ValueError("Sheet name is required")
+                
+            if not sheet_data.get('columns') or not isinstance(sheet_data['columns'], list):
+                raise ValueError("Sheet columns are required and must be a list")
+            
+            # Create column objects
+            columns = []
+            for i, col in enumerate(sheet_data['columns']):
+                column = smartsheet.models.Column({
+                    'title': col['title'],
+                    'type': col['type'],
+                    'primary': i == 0  # Set the first column as primary
+                })
+                
+                # Add options for PICKLIST type
+                if col['type'] == 'PICKLIST' and 'options' in col:
+                    column.options = col['options']
+                    
+                columns.append(column)
+            
+            # Create sheet object
+            sheet = smartsheet.models.Sheet({
+                'name': sheet_data['name'],
+                'columns': columns
+            })
+            
+            # Create the sheet in the workspace
+            response = self.client.Workspaces.create_sheet_in_workspace(workspace_id, sheet)
+            
+            return {
+                "success": True,
+                "message": "Successfully created sheet in workspace",
+                "sheet_id": str(response.result.id),
+                "name": response.result.name,
+                "workspace_id": str(workspace_id)
+            }
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to create sheet in workspace: {str(e)}")
+    
+    def list_workspace_sheets(self, workspace_id: Union[str, int]) -> Dict[str, Any]:
+        """
+        List all sheets in a workspace.
+        
+        Args:
+            workspace_id: Workspace ID
+            
+        Returns:
+            Dict containing list of sheets in the workspace
+            
+        Raises:
+            RuntimeError: If listing workspace sheets fails
+        """
+        try:
+            # Convert workspace_id to int if it's a string
+            if isinstance(workspace_id, str):
+                workspace_id = int(workspace_id)
+                
+            # Get the workspace
+            workspace = self.client.Workspaces.get_workspace(workspace_id)
+            
+            sheets = []
+            if hasattr(workspace, 'sheets') and workspace.sheets:
+                for sheet in workspace.sheets:
+                    sheet_data = {
+                        "id": str(sheet.id),
+                        "name": str(sheet.name),
+                        "permalink": str(sheet.permalink) if hasattr(sheet, 'permalink') else None
+                    }
+                    
+                    # Handle created_at and modified_at which might be special types
+                    if hasattr(sheet, 'created_at') and sheet.created_at is not None:
+                        sheet_data["created_at"] = str(sheet.created_at)
+                    
+                    if hasattr(sheet, 'modified_at') and sheet.modified_at is not None:
+                        sheet_data["modified_at"] = str(sheet.modified_at)
+                        
+                    sheets.append(sheet_data)
+            
+            return {
+                "workspace_id": str(workspace_id),
+                "workspace_name": str(workspace.name),
+                "sheets": sheets,
+                "total_count": len(sheets)
+            }
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to list workspace sheets: {str(e)}")
