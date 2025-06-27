@@ -313,7 +313,7 @@ class SmartsheetOperations:
         return cell
 
     def add_rows(self, sheet_id: str, row_data: List[Dict[str, Any]], column_map: Dict[str, str]) -> Dict[str, Any]:
-        """Add rows to a sheet. Skips system-managed columns."""
+        """Add rows to a sheet with optional hierarchy support. Skips system-managed columns."""
         try:
             # Retrieve sheet info to identify system-managed columns
             sheet_info = self.get_sheet_info(sheet_id)
@@ -323,11 +323,38 @@ class SmartsheetOperations:
             new_rows = []
             for data in row_data:
                 new_row = smartsheet.models.Row()
-                new_row.to_bottom = True
                 
+                # Handle hierarchy and positioning attributes
+                # Map camelCase API names to Python SDK attribute names
+                hierarchy_mapping = {
+                    'parentId': 'parent_id',
+                    'toTop': 'to_top', 
+                    'toBottom': 'to_bottom',
+                    'above': 'above',
+                    'below': 'below',
+                    'siblingId': 'sibling_id'
+                }
+                has_positioning = False
+                
+                for api_attr, sdk_attr in hierarchy_mapping.items():
+                    if api_attr in data:
+                        value = data[api_attr]
+                        # Convert parent_id to integer if it's a string
+                        if sdk_attr == 'parent_id' and isinstance(value, str):
+                            value = int(value)
+                        setattr(new_row, sdk_attr, value)
+                        has_positioning = True
+                
+                # If no positioning specified, default to bottom
+                if not has_positioning:
+                    new_row.to_bottom = True
+                
+                # Process regular cell data
                 cells = []
                 for field, value in data.items():
-                    # Skip system-managed columns
+                    # Skip hierarchy attributes and system-managed columns
+                    if field in hierarchy_mapping:
+                        continue
                     if field in column_info and column_info[field].get('system_managed', False):
                         continue
                     
@@ -361,6 +388,78 @@ class SmartsheetOperations:
             
         except Exception as e:
             raise RuntimeError(f"Failed to add rows: {str(e)}")
+
+    def add_hierarchical_rows(
+        self, 
+        sheet_id: str, 
+        hierarchical_data: List[Dict[str, Any]], 
+        column_map: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Add rows with hierarchical structure in a single operation.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            hierarchical_data: List of row data with hierarchy information
+                Each row can contain:
+                - Regular column data (mapped via column_map)
+                - parentId: ID of parent row (for indentation)
+                - toTop/toBottom: Position within level
+                - siblingId + above/below: Position relative to sibling
+            column_map: Mapping of field names to column IDs
+            
+        Returns:
+            Dict containing success message and created row information with hierarchy
+            
+        Example hierarchical_data:
+            [
+                {
+                    "Task Name": "Phase 1: Planning",
+                    "Duration": "0",
+                    "toTop": True
+                },
+                {
+                    "Task Name": "Requirements Gathering", 
+                    "Duration": "5d",
+                    "parentId": "<parent_row_id>",  # Will be set after parent is created
+                    "toTop": True
+                },
+                {
+                    "Task Name": "Stakeholder Interviews",
+                    "Duration": "3d", 
+                    "parentId": "<requirements_row_id>",  # Will be set after requirements is created
+                    "toTop": True
+                }
+            ]
+        """
+        try:
+            # This method creates rows in order, allowing parent IDs to be set
+            # as we create each level of the hierarchy
+            created_rows = []
+            row_id_map = {}  # Track created row IDs for parent references
+            
+            for i, data in enumerate(hierarchical_data):
+                # Create a single row
+                result = self.add_rows(sheet_id, [data], column_map)
+                
+                if result.get('row_ids'):
+                    row_id = result['row_ids'][0]
+                    created_rows.append({
+                        'index': i,
+                        'row_id': row_id,
+                        'task_name': data.get('Task Name', f'Row {i+1}')
+                    })
+                    row_id_map[i] = row_id
+            
+            return {
+                "message": "Successfully added hierarchical rows",
+                "rows_added": len(created_rows),
+                "created_rows": created_rows,
+                "row_id_map": row_id_map
+            }
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to add hierarchical rows: {str(e)}")
 
     def update_rows(
         self,

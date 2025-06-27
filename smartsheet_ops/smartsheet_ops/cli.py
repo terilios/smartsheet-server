@@ -17,7 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Smartsheet Operations CLI')
     parser.add_argument('--api-key', required=True, help='Smartsheet API key')
     parser.add_argument('--operation', required=True, 
-                       choices=['get_column_map', 'add_rows', 'check_duplicate', 'update_rows', 'delete_rows', 'search', 'get_all_row_ids',
+                       choices=['get_column_map', 'add_rows', 'add_hierarchical_rows', 'check_duplicate', 'update_rows', 'delete_rows', 'search', 'get_all_row_ids',
                                'add_column', 'delete_column', 'rename_column', 'bulk_update',
                                'start_analysis', 'cancel_analysis', 'get_job_status',
                                'list_workspaces', 'get_workspace', 'create_workspace',
@@ -97,6 +97,16 @@ async def main():
             # Find our newly added rows (they'll be at the top since we use to_top=True)
             new_row_ids = [str(row.id) for row in sheet.rows[:len(data['row_data'])]]
             result['row_ids'] = new_row_ids
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'add_hierarchical_rows':
+            if not args.data:
+                raise ValueError("--data is required for add_hierarchical_rows operation")
+            data = json.loads(args.data)
+            if not isinstance(data, dict) or 'hierarchical_data' not in data or 'column_map' not in data:
+                raise ValueError("Invalid data format. Expected: {'hierarchical_data': [...], 'column_map': {...}}")
+            
+            result = ops.add_hierarchical_rows(args.sheet_id, data['hierarchical_data'], data['column_map'])
             print(json.dumps(result, indent=2))
             
         elif args.operation == 'update_rows':
