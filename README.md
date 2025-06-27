@@ -71,7 +71,7 @@ The server integrates with:
 
 ## Features
 
-### Tools
+### Tools (19 Available)
 
 1. `get_column_map` (Read)
 
@@ -245,6 +245,105 @@ The server integrates with:
     - Returns sheet IDs, names, and permalinks
     - Includes creation and modification timestamps
     - Supports workspace content discovery
+
+### Resources (4 Static + 5 Dynamic Templates)
+
+The server provides both static resources and dynamic resource templates for enhanced data access and contextual information.
+
+#### Static Resources
+
+1. `smartsheet://templates/project-plan` - **Project Plan Template**
+
+   - Pre-built project plan template with best practices
+   - Includes optimal column structure for task management
+   - Provides guidance on dependencies and resource allocation
+
+2. `smartsheet://templates/task-tracker` - **Task Tracker Template**
+
+   - Simple task tracking template for team collaboration
+   - Focused on progress monitoring without complex dependencies
+   - Ideal for agile teams and simple workflows
+
+3. `smartsheet://schemas/column-types` - **Column Types Reference**
+
+   - Complete reference of all supported Smartsheet column types
+   - Includes API support level for each type (full, limited, read-only)
+   - Essential for understanding column capabilities and limitations
+
+4. `smartsheet://best-practices/formulas` - **Formula Best Practices**
+   - Common formula patterns and calculation examples
+   - Best practices for performance and maintainability
+   - Cross-sheet reference guidance
+
+#### Dynamic Resource Templates
+
+1. `smartsheet://{sheet_id}/summary` - **Sheet Summary**
+
+   - Auto-generated summary with key metrics and health status
+   - Progress indicators and completion statistics
+   - Real-time analysis of sheet data
+
+2. `smartsheet://{sheet_id}/gantt-data` - **Gantt Chart Data**
+
+   - Standardized Gantt chart data format for visualization
+   - Timeline data optimized for project management tools
+   - Dependency relationships and critical path information
+
+3. `smartsheet://{workspace_id}/overview` - **Workspace Overview**
+
+   - Comprehensive overview of workspace contents
+   - All sheets, reports, and dashboards in structured format
+   - Access levels and organizational hierarchy
+
+4. `smartsheet://{sheet_id}/dependencies` - **Dependency Map**
+
+   - Visual dependency mapping for project sheets
+   - Task relationships and critical path analysis
+   - Bottleneck identification and optimization suggestions
+
+5. `smartsheet://{sheet_id}/health-report` - **Sheet Health Report**
+   - Health analysis identifying data quality issues
+   - Missing data detection and broken formula identification
+   - Optimization opportunities and recommendations
+
+### Prompts (6 Available)
+
+Intelligent prompt templates that provide guided assistance for common Smartsheet operations and analysis.
+
+1. `create_project_plan` - **Project Plan Creation Guide**
+
+   - Guided project plan creation with best practices
+   - Template suggestions based on project type and duration
+   - Work breakdown structure recommendations
+
+2. `analyze_project_status` - **Project Health Analysis**
+
+   - Comprehensive project health analysis with recommendations
+   - Timeline adherence and resource utilization insights
+   - Risk identification and mitigation strategies
+
+3. `optimize_workflow` - **Workflow Optimization**
+
+   - Suggestions for improving sheet structure and workflows
+   - Automation opportunities and efficiency improvements
+   - User experience enhancement recommendations
+
+4. `generate_insights` - **Data Insights Extraction**
+
+   - Extract key insights and patterns from sheet data
+   - Trend analysis and anomaly detection
+   - Actionable intelligence and decision support
+
+5. `create_dashboard_summary` - **Executive Dashboard Creation**
+
+   - Generate executive summaries from multiple sheets
+   - High-level KPI tracking and strategic insights
+   - Leadership-focused reporting and recommendations
+
+6. `setup_conditional_formatting` - **Conditional Formatting Guide**
+   - Step-by-step conditional formatting setup
+   - Visual data representation best practices
+   - Status indicators and progress tracking configuration
 
 ### Key Capabilities
 
@@ -807,6 +906,135 @@ const sheets = await use_mcp_tool({
   tool_name: "list_workspace_sheets",
   arguments: {
     workspace_id: "6621332407379844",
+  },
+});
+```
+
+### Resources Usage Examples
+
+```typescript
+// Access static resources
+const projectTemplate = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://templates/project-plan",
+});
+
+const columnTypes = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://schemas/column-types",
+});
+
+const formulaGuide = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://best-practices/formulas",
+});
+
+// Access dynamic resources
+const sheetSummary = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://8596778555232132/summary",
+});
+
+const ganttData = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://8596778555232132/gantt-data",
+});
+
+const workspaceOverview = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://6621332407379844/overview",
+});
+
+const dependencyMap = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://8596778555232132/dependencies",
+});
+
+const healthReport = await access_mcp_resource({
+  server_name: "smartsheet",
+  uri: "smartsheet://8596778555232132/health-report",
+});
+```
+
+### Prompts Usage Examples
+
+```typescript
+// Project plan creation guidance
+const projectPlanPrompt = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_prompt",
+  arguments: {
+    name: "create_project_plan",
+    arguments: {
+      project_name: "Website Redesign",
+      project_type: "software",
+      duration_estimate: "3 months",
+    },
+  },
+});
+
+// Project health analysis
+const analysisPrompt = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_prompt",
+  arguments: {
+    name: "analyze_project_status",
+    arguments: {
+      sheet_id: "8596778555232132",
+      focus_area: "timeline",
+    },
+  },
+});
+
+// Workflow optimization suggestions
+const optimizationPrompt = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_prompt",
+  arguments: {
+    name: "optimize_workflow",
+    arguments: {
+      sheet_id: "8596778555232132",
+      workflow_type: "approval",
+    },
+  },
+});
+
+// Data insights extraction
+const insightsPrompt = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_prompt",
+  arguments: {
+    name: "generate_insights",
+    arguments: {
+      sheet_id: "8596778555232132",
+      insight_type: "bottlenecks",
+    },
+  },
+});
+
+// Executive dashboard creation
+const dashboardPrompt = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_prompt",
+  arguments: {
+    name: "create_dashboard_summary",
+    arguments: {
+      workspace_id: "6621332407379844",
+      summary_focus: "risks",
+    },
+  },
+});
+
+// Conditional formatting setup
+const formattingPrompt = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_prompt",
+  arguments: {
+    name: "setup_conditional_formatting",
+    arguments: {
+      sheet_id: "8596778555232132",
+      formatting_goal: "status indicators",
+    },
   },
 });
 ```
