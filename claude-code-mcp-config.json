@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "smartsheet": {
-      "transport": "streamable-http",
-      "url": "http://localhost:3000/mcp",
-      "description": "Smartsheet MCP Server with healthcare analytics capabilities"
-    }
-  }
-}
