@@ -84,16 +84,22 @@ The server integrates with:
    - Returns sample data for context
    - Includes usage examples for writing data
 
-2. `smartsheet_write` (Create)
+2. `get_sheet_info` (Read - Alias)
+
+   - Alias for `get_column_map` providing identical functionality
+   - Maintains backward compatibility with existing integrations
+
+3. `smartsheet_write` (Create)
 
    - Writes new rows to Smartsheet with intelligent handling of:
      - System-managed columns
      - Multi-select picklist values
      - Formula-based columns
    - Implements automatic duplicate detection
+   - **Appends new rows to the bottom of the sheet** (after existing entries)
    - Returns detailed operation results including row IDs
 
-3. `smartsheet_update` (Update)
+4. `smartsheet_update` (Update)
 
    - Updates existing rows in a Smartsheet
    - Supports partial updates (modify specific fields)
@@ -101,14 +107,14 @@ The server integrates with:
    - Handles multi-select fields consistently
    - Returns success/failure details per row
 
-4. `smartsheet_delete` (Delete)
+5. `smartsheet_delete` (Delete)
 
    - Deletes rows from a Smartsheet
    - Supports batch deletion of multiple rows
    - Validates row existence and permissions
    - Returns detailed operation results
 
-5. `smartsheet_search` (Search)
+6. `smartsheet_search` (Search)
 
    - Performs advanced search across sheets
    - Supports multiple search modes:
@@ -121,7 +127,7 @@ The server integrates with:
      - Detailed match information
      - Search metadata and statistics
 
-6. `smartsheet_add_column` (Column Management)
+7. `smartsheet_add_column` (Column Management)
 
    - Adds new columns to a Smartsheet
    - Supports all column types:
@@ -138,7 +144,7 @@ The server integrates with:
    - Enforces column limit (400) with validation
    - Returns detailed column information
 
-7. `smartsheet_delete_column` (Column Management)
+8. `smartsheet_delete_column` (Column Management)
 
    - Safely deletes columns with dependency checking
    - Validates formula references before deletion
@@ -146,7 +152,7 @@ The server integrates with:
    - Returns detailed dependency information
    - Supports force deletion option
 
-8. `smartsheet_rename_column` (Column Management)
+9. `smartsheet_rename_column` (Column Management)
 
    - Renames columns while preserving relationships
    - Updates formula references automatically
@@ -154,18 +160,25 @@ The server integrates with:
    - Validates name uniqueness
    - Returns detailed update information
 
-9. `smartsheet_bulk_update` (Conditional Updates)
+10. `smartsheet_bulk_update` (Conditional Updates)
 
-   - Performs conditional bulk updates based on rules
-   - Supports complex condition evaluation:
-     - Multiple operators (equals, contains, greaterThan, etc.)
-     - Type-specific comparisons (text, dates, numbers)
-     - Empty/non-empty checks
-   - Batch processing with configurable size
-   - Comprehensive error handling and rollback
-   - Detailed operation results tracking
+    - Performs conditional bulk updates based on rules
+    - Supports complex condition evaluation:
+      - Multiple operators (equals, contains, greaterThan, etc.)
+      - Type-specific comparisons (text, dates, numbers)
+      - Empty/non-empty checks
+    - Batch processing with configurable size
+    - Comprehensive error handling and rollback
+    - Detailed operation results tracking
 
-10. `start_batch_analysis` (Healthcare Analytics)
+11. `get_all_row_ids` (Utility)
+
+    - Retrieves all row IDs from a Smartsheet
+    - Useful for batch operations and data analysis
+    - Returns complete list of row identifiers
+    - Supports large sheets efficiently
+
+12. `start_batch_analysis` (Healthcare Analytics)
 
     - Processes entire sheets or selected rows with AI analysis
     - Supports multiple analysis types:
@@ -174,13 +187,14 @@ The server integrates with:
       - Custom scoring for healthcare initiatives
       - Research impact assessment
     - Features:
-      - Automatic batch processing (50 rows per batch)
+      - Automatic batch processing (3 rows per batch for optimal performance)
       - Progress tracking and status monitoring
       - Error handling with detailed reporting
-      - Customizable analysis goals
+      - Customizable analysis goals via Azure OpenAI
       - Support for multiple source columns
+      - Token-aware content chunking for large text
 
-11. `get_job_status` (Analysis Monitoring)
+13. `get_job_status` (Analysis Monitoring)
 
     - Tracks batch analysis progress
     - Provides detailed job statistics:
@@ -191,42 +205,42 @@ The server integrates with:
     - Real-time status updates
     - Comprehensive error reporting
 
-12. `cancel_batch_analysis` (Job Control)
+14. `cancel_batch_analysis` (Job Control)
 
     - Cancels running batch analysis jobs
     - Graceful process termination
     - Maintains data consistency
     - Returns final job status
 
-13. `list_workspaces` (Workspace Management)
+15. `list_workspaces` (Workspace Management)
 
     - Lists all accessible workspaces
     - Returns workspace IDs, names, and permalinks
     - Includes access level information
     - Supports organization-wide workspace discovery
 
-14. `get_workspace` (Workspace Management)
+16. `get_workspace` (Workspace Management)
 
     - Retrieves detailed workspace information
     - Returns contained sheets, folders, reports, and dashboards
     - Provides access level and permission details
     - Supports workspace content exploration
 
-15. `create_workspace` (Workspace Management)
+17. `create_workspace` (Workspace Management)
 
     - Creates a new workspace with specified name
     - Returns the new workspace ID and confirmation
     - Enables programmatic workspace organization
     - Supports migration from deprecated folder endpoints
 
-16. `create_sheet_in_workspace` (Workspace Management)
+18. `create_sheet_in_workspace` (Workspace Management)
 
     - Creates a new sheet directly in a workspace
     - Supports all column types and configurations
     - Returns the new sheet ID and details
     - Enables programmatic sheet creation and organization
 
-17. `list_workspace_sheets` (Workspace Management)
+19. `list_workspace_sheets` (Workspace Management)
     - Lists all sheets in a specific workspace
     - Returns sheet IDs, names, and permalinks
     - Includes creation and modification timestamps
@@ -276,19 +290,22 @@ The server integrates with:
 
 - **Healthcare Analytics**
 
-  - Clinical note summarization
+  - Clinical note summarization using Azure OpenAI
   - Patient feedback sentiment analysis
   - Protocol compliance scoring
   - Research impact assessment
   - Resource utilization analysis
+  - Custom analysis with optimized prompt generation
 
 - **Batch Processing**
 
-  - Automatic row batching (50 rows per batch)
+  - Automatic row batching (3 rows per batch for optimal performance)
   - Progress tracking and monitoring
   - Error handling and recovery
   - Customizable processing goals
   - Multi-column analysis support
+  - Token-aware content chunking for large text
+  - Background job processing with ThreadPoolExecutor
 
 - **Job Management**
   - Real-time status monitoring
@@ -304,6 +321,7 @@ The server integrates with:
 - Node.js and npm
 - Conda (for environment management)
 - Smartsheet API access token
+- Azure OpenAI API access (for batch analysis features)
 
 ### Environment Setup
 
@@ -320,13 +338,20 @@ conda activate cline_mcp_env
 npm install
 ```
 
-3. Install Python package:
+3. Install Python dependencies:
 
 ```bash
 cd smartsheet_ops
 pip install -e .
 cd ..
 ```
+
+Note: The Python package includes dependencies for:
+
+- `smartsheet-python-sdk` - Smartsheet API client
+- `python-dotenv` - Environment variable management
+- `openai` - Azure OpenAI integration
+- `tiktoken` - Token counting for AI analysis
 
 4. Build the TypeScript server:
 
@@ -336,7 +361,10 @@ npm run build
 
 ### Configuration
 
-The server requires proper configuration in your MCP settings. You can use it with both Claude Desktop and Cline.
+The server supports two transport modes:
+
+- **STDIO Transport** (default): For local development and CLI usage
+- **HTTP Transport**: For web-based clients and network access
 
 #### 1. Get Your Smartsheet API Key
 
@@ -344,7 +372,7 @@ The server requires proper configuration in your MCP settings. You can use it wi
 2. Go to Account → Personal Settings → API Access
 3. Generate a new access token
 
-#### 2. Configure for Cline
+#### 2. Configure for STDIO Transport (Cline/Local)
 
 The configuration path depends on your operating system:
 
@@ -371,7 +399,11 @@ The configuration path depends on your operating system:
   "mcpServers": {
     "smartsheet": {
       "command": "/Users/[username]/anaconda3/envs/cline_mcp_env/bin/node",
-      "args": ["/path/to/smartsheet-server/build/index.js"],
+      "args": [
+        "/path/to/smartsheet-server/build/index.js",
+        "--transport",
+        "stdio"
+      ],
       "env": {
         "PYTHON_PATH": "/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3",
         "SMARTSHEET_API_KEY": "your-api-key",
@@ -394,6 +426,7 @@ The configuration path depends on your operating system:
         "start_batch_analysis",
         "get_job_status",
         "cancel_batch_analysis",
+        "get_all_row_ids",
         "list_workspaces",
         "get_workspace",
         "create_workspace",
@@ -405,7 +438,48 @@ The configuration path depends on your operating system:
 }
 ```
 
+#### 3. Configure for HTTP Transport
+
+For web-based MCP clients or network access, use the HTTP transport mode:
+
+**Start the server:**
+
+```bash
+# Start with default port (3000)
+SMARTSHEET_API_KEY=your-api-key PYTHON_PATH=/path/to/python smartsheet-server --transport http
+
+# Start with custom port
+SMARTSHEET_API_KEY=your-api-key PYTHON_PATH=/path/to/python smartsheet-server --transport http --port 8080
+```
+
+**Client Configuration:**
+
+```json
+{
+  "mcpServers": {
+    "smartsheet-server": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-optional-auth-token"
+      }
+    }
+  }
+}
+```
+
+**Health Check:**
+
+The HTTP server provides a health check endpoint:
+
+```bash
+curl http://localhost:3000/health
+# Response: {"status":"ok","server":"smartsheet-mcp"}
+```
+
 ### Starting the Server
+
+#### STDIO Transport (Default)
 
 The server will start automatically when Cline or Claude Desktop needs it. However, you can also start it manually for testing.
 
@@ -415,8 +489,11 @@ The server will start automatically when Cline or Claude Desktop needs it. Howev
 # Activate the environment
 conda activate cline_mcp_env
 
-# Start the server
+# Start with STDIO transport (default)
 PYTHON_PATH=/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3 SMARTSHEET_API_KEY=your-api-key node build/index.js
+
+# Or explicitly specify STDIO transport
+PYTHON_PATH=/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3 SMARTSHEET_API_KEY=your-api-key node build/index.js --transport stdio
 ```
 
 **Windows**:
@@ -425,21 +502,81 @@ PYTHON_PATH=/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3 SMARTSHEE
 :: Activate the environment
 conda activate cline_mcp_env
 
-:: Start the server
+:: Start with STDIO transport
 set PYTHON_PATH=C:\Users\[username]\anaconda3\envs\cline_mcp_env\python.exe
 set SMARTSHEET_API_KEY=your-api-key
-node build\index.js
+node build\index.js --transport stdio
+```
+
+#### HTTP Transport
+
+For web-based clients or network access:
+
+**macOS/Linux**:
+
+```bash
+# Activate the environment
+conda activate cline_mcp_env
+
+# Start HTTP server on default port (3000)
+PYTHON_PATH=/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3 SMARTSHEET_API_KEY=your-api-key node build/index.js --transport http
+
+# Start HTTP server on custom port
+PYTHON_PATH=/Users/[username]/anaconda3/envs/cline_mcp_env/bin/python3 SMARTSHEET_API_KEY=your-api-key node build/index.js --transport http --port 8080
+```
+
+**Windows**:
+
+```cmd
+:: Activate the environment
+conda activate cline_mcp_env
+
+:: Start HTTP server
+set PYTHON_PATH=C:\Users\[username]\anaconda3\envs\cline_mcp_env\python.exe
+set SMARTSHEET_API_KEY=your-api-key
+node build\index.js --transport http --port 3000
+```
+
+#### Command Line Options
+
+```bash
+# View help
+node build/index.js --help
+
+# Available options:
+--transport <type>    # "stdio" (default) or "http"
+--port <number>       # HTTP port (default: 3000, only used with --transport http)
+--help, -h            # Show help message
 ```
 
 ### Verifying Installation
 
+#### STDIO Transport
+
 1. The server should output "Smartsheet MCP server running on stdio" when started
 2. Test the connection using any MCP tool (e.g., get_column_map)
-3. Check the Python environment has the smartsheet package installed:
-   ```bash
-   conda activate cline_mcp_env
-   pip show smartsheet-python-sdk
-   ```
+
+#### HTTP Transport
+
+1. The server should output "Smartsheet MCP server running on HTTP port 3000" when started
+2. Test the health endpoint: `curl http://localhost:3000/health`
+3. Expected response: `{"status":"ok","server":"smartsheet-mcp"}`
+
+#### Python Environment
+
+Check the Python environment has the required packages installed:
+
+```bash
+conda activate cline_mcp_env
+pip show smartsheet-python-sdk openai tiktoken python-dotenv
+```
+
+The Python package should include these key dependencies:
+
+- `smartsheet-python-sdk>=2.105.1` - Smartsheet API client
+- `openai>=1.0.0` - Azure OpenAI integration
+- `tiktoken>=0.5.0` - Token counting for AI analysis
+- `python-dotenv>=1.0.0` - Environment variable management
 
 ## Usage Examples
 
@@ -565,6 +702,7 @@ const result = await use_mcp_tool({
     type: "custom",
     sourceColumns: ["Ideas", "Implementation_Details"],
     targetColumn: "Pediatric_Score",
+    rowIds: ["row1", "row2", "row3"], // Optional: specify rows, or omit for all rows
     customGoal:
       "Score each innovation 1-100 based on pediatric healthcare impact. Consider: 1) Direct benefit to child patients, 2) Integration with pediatric workflows, 3) Implementation feasibility in children's hospital, 4) Safety considerations for pediatric use. Return only a number.",
   },
@@ -579,6 +717,7 @@ const result = await use_mcp_tool({
     type: "summarize",
     sourceColumns: ["Clinical_Notes"],
     targetColumn: "Note_Summary",
+    rowIds: ["row1", "row2"], // Optional: specify rows, or omit for all rows
   },
 });
 
@@ -591,6 +730,26 @@ const result = await use_mcp_tool({
     type: "sentiment",
     sourceColumns: ["Patient_Feedback"],
     targetColumn: "Satisfaction_Score",
+    rowIds: ["row1", "row2"], // Optional: specify rows, or omit for all rows
+  },
+});
+
+// Example 4: Get All Row IDs for Batch Processing
+const allRows = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_all_row_ids",
+  arguments: {
+    sheet_id: "your-sheet-id",
+  },
+});
+
+// Example 5: Monitor Analysis Job Progress
+const jobStatus = await use_mcp_tool({
+  server_name: "smartsheet",
+  tool_name: "get_job_status",
+  arguments: {
+    sheet_id: "your-sheet-id",
+    jobId: "job-uuid-from-start-analysis",
   },
 });
 ```

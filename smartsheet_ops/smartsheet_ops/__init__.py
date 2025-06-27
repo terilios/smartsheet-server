@@ -13,6 +13,29 @@ SYSTEM_COLUMN_TYPES = {
     'FORMULA'        # For formula columns
 }
 
+# Project plan specific column types
+PROJECT_COLUMN_TYPES = {
+    'DURATION',           # Task duration
+    'ABSTRACT_DATETIME',  # Start/Finish dates in project plans
+    'PREDECESSOR',        # Task dependencies
+    'CONTACT_LIST',       # Resource assignments
+    'PICKLIST',          # Status dropdowns
+    'DATETIME'           # Standard date/time columns
+}
+
+# Multi-value column types
+MULTI_VALUE_COLUMN_TYPES = {
+    'MULTI_CONTACT_LIST', # Multiple contact assignments
+    'MULTI_PICKLIST'      # Multiple selections from picklist
+}
+
+# All recognized column types (for validation)
+ALL_COLUMN_TYPES = SYSTEM_COLUMN_TYPES | PROJECT_COLUMN_TYPES | MULTI_VALUE_COLUMN_TYPES | {
+    'TEXT_NUMBER',       # Standard text/number
+    'DATE',             # Standard date
+    'CHECKBOX'          # Checkbox columns
+}
+
 class SmartsheetOperations:
     def __init__(self, api_key: str):
         self.client = smartsheet.Smartsheet(api_key)
@@ -73,11 +96,13 @@ class SmartsheetOperations:
         """
         Extract column information safely.
         Distinguish base column types from system-managed or formula-based columns.
+        Enhanced to properly detect project plan column types.
         """
         info = {
             "id": str(column.id_),
             "type": "TEXT_NUMBER",  # Default final/effective type
             "system_managed": False,
+            "project_column": False,  # New flag for project-specific columns
             "debug": {}
         }
         
@@ -94,35 +119,67 @@ class SmartsheetOperations:
                 if hasattr(column, attr):
                     info["debug"][attr] = str(getattr(column, attr))
 
-            # 1) Get column type from debug info first
-            if '_type_' in info["debug"]:
-                raw_type = info["debug"]['_type_']
-                if raw_type and raw_type.lower() != 'none':
-                    info["type"] = raw_type.strip()
-                    # Handle PICKLIST type
-                    if info["type"] == "PICKLIST":
-                        self._process_picklist_options(column, info)
-
-            # 2) Detect system column type (will override base type if recognized)
+            # 1) Detect system column type first (highest priority)
             system_type = None
             system_managed = False
             for attr in ['_system_column_type', 'system_column_type']:
                 if hasattr(column, attr):
                     raw_value = str(getattr(column, attr))
                     normalized = self._normalize_column_type(raw_value)
-                    if normalized in SYSTEM_COLUMN_TYPES:
+                    if normalized and normalized in SYSTEM_COLUMN_TYPES:
                         info["system_column_type"] = raw_value
-                        info["type"] = raw_value  # effective type becomes system type
-                        system_type = raw_value
+                        info["type"] = normalized  # Use normalized value for type
+                        system_type = normalized
                         system_managed = True
 
                         if normalized == 'AUTO_NUMBER':
                             self._process_auto_number_config(column, info)
+                        elif normalized in ['CREATED_DATE', 'MODIFIED_DATE']:
+                            info["format_type"] = "system_datetime"
                         # Stop if system type is found
                         break
 
+            # 2) If not a system column, get column type from debug info
+            if not system_managed and '_type_' in info["debug"]:
+                raw_type = info["debug"]['_type_']
+                if raw_type and raw_type.lower() != 'none':
+                    detected_type = raw_type.strip()
+                    
+                    # Check if it's a project plan specific type
+                    if detected_type in PROJECT_COLUMN_TYPES:
+                        info["type"] = detected_type
+                        info["project_column"] = True
+                        
+                        # Handle special project column types
+                        if detected_type == "PICKLIST":
+                            self._process_picklist_options(column, info)
+                        elif detected_type == "CONTACT_LIST":
+                            info["supports_multiple"] = True
+                        elif detected_type == "DURATION":
+                            info["format_type"] = "duration"
+                        elif detected_type in ["ABSTRACT_DATETIME", "DATETIME"]:
+                            info["format_type"] = "datetime"
+                        elif detected_type == "PREDECESSOR":
+                            info["format_type"] = "predecessor"
+                            info["supports_dependencies"] = True
+                    elif detected_type in MULTI_VALUE_COLUMN_TYPES:
+                        info["type"] = detected_type
+                        info["multi_value"] = True
+                        
+                        # Handle multi-value column types
+                        if detected_type == "MULTI_PICKLIST":
+                            self._process_picklist_options(column, info)
+                            info["supports_multiple_selections"] = True
+                        elif detected_type == "MULTI_CONTACT_LIST":
+                            info["supports_multiple_contacts"] = True
+                    else:
+                        # Standard column type
+                        info["type"] = detected_type
+                        if detected_type == "PICKLIST":
+                            self._process_picklist_options(column, info)
+
             # 3) If no system column type found, check for a formula
-            if not system_type:
+            if not system_type and not info["project_column"]:
                 for attr in ['formula', '_formula']:
                     if hasattr(column, attr):
                         formula_val = str(getattr(column, attr))
@@ -141,12 +198,26 @@ class SmartsheetOperations:
             if '.' in info["type"]:
                 info["type"] = info["type"].split('.')[-1]
             
-            # 4) Handle picklist options if it's a picklist
+            # 4) Handle picklist options if it's a picklist (for both project and standard)
             if info["type"] == "PICKLIST":
                 self._process_picklist_options(column, info)
 
             # 5) Add validation and format metadata
             self._add_metadata(column, info)
+
+            # 6) Add project-specific metadata
+            if info["project_column"]:
+                info["category"] = "project_management"
+                
+                # Add type-specific guidance
+                if info["type"] == "DURATION":
+                    info["usage_notes"] = "Use format like '5d', '2w', '3h' for duration values"
+                elif info["type"] == "ABSTRACT_DATETIME":
+                    info["usage_notes"] = "Use ISO format dates for start/finish times"
+                elif info["type"] == "PREDECESSOR":
+                    info["usage_notes"] = "Reference other task row numbers (e.g., '1', '2,3', '1FS+2d')"
+                elif info["type"] == "CONTACT_LIST":
+                    info["usage_notes"] = "Assign users by email or name"
 
         except Exception:
             # If something goes wrong, we simply return what we have so far
@@ -252,7 +323,7 @@ class SmartsheetOperations:
             new_rows = []
             for data in row_data:
                 new_row = smartsheet.models.Row()
-                new_row.to_top = True
+                new_row.to_bottom = True
                 
                 cells = []
                 for field, value in data.items():
