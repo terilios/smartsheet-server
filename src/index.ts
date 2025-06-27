@@ -1814,45 +1814,729 @@ class SmartsheetServer {
 
   // Helper methods for generating dynamic resource content
   private async generateSheetSummary(sheetId: string) {
-    // This would call the existing get_column_map tool to get sheet data
-    // and generate a summary with key metrics
-    return {
-      sheet_id: sheetId,
-      summary: 'Sheet summary would be generated here using existing tools',
-      generated_at: new Date().toISOString()
-    };
+    try {
+      // Get sheet structure
+      const structureCommand = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --sheet-id "${sheetId}" --operation get_column_map`;
+      const { stdout: structureData } = await execAsync(structureCommand, execOptions);
+      const sheetData = JSON.parse(structureData);
+
+      // Validate data structure
+      if (!sheetData || typeof sheetData !== 'object') {
+        throw new Error('Invalid sheet data structure received');
+      }
+
+      // Extract columns from column_info structure
+      const columnInfo = sheetData.column_info || {};
+      const columns = Object.entries(columnInfo).map(([title, info]: [string, any]) => ({
+        title: title,
+        type: info?.debug?._type_ || info?.type || 'TEXT_NUMBER',
+        id: info?.id
+      }));
+
+      // Calculate summary metrics with safe defaults
+      const totalRows = sheetData.row_count || 0;
+      const sampleData = Array.isArray(sheetData.sample_data) ? sheetData.sample_data : [];
+
+      // Analyze column types and usage with safe access
+      const columnAnalysis = columns.map((col: any) => ({
+        name: col?.title || 'Unknown Column',
+        type: col?.type || 'UNKNOWN',
+        hasData: Array.isArray(sampleData) && sampleData.some((row: any) => 
+          row && typeof row === 'object' && row[col?.title] !== null && row[col?.title] !== ''
+        )
+      }));
+
+      // Generate status distribution if status column exists
+      let statusDistribution = null;
+      const statusColumn = columns.find((col: any) => 
+        col.title.toLowerCase().includes('status') || 
+        col.type === 'PICKLIST'
+      );
+      
+      // For now, we'll skip status distribution since we don't have options data
+      // This would need to be enhanced to get actual picklist options from the API
+      if (statusColumn && sampleData.length > 0) {
+        // Get unique values from sample data for status analysis
+        const statusValues = [...new Set(sampleData
+          .map((row: any) => row[statusColumn.title])
+          .filter((val: any) => val !== null && val !== undefined && val !== ''))];
+        
+        if (statusValues.length > 0) {
+          statusDistribution = statusValues.map((status: any) => ({
+            status: status.toString(),
+            count: sampleData.filter((row: any) => row[statusColumn.title] === status).length
+          }));
+        }
+      }
+
+      return {
+        sheet_id: sheetId,
+        metadata: {
+          total_rows: totalRows,
+          total_columns: columns.length,
+          last_updated: new Date().toISOString()
+        },
+        column_analysis: columnAnalysis,
+        status_distribution: statusDistribution,
+        health_indicators: {
+          completion_rate: statusDistribution ? 
+            (statusDistribution.find((s: any) => s.status.toLowerCase().includes('complete'))?.count || 0) / totalRows * 100 : null,
+          data_completeness: columnAnalysis.filter((c: any) => c.hasData).length / columns.length * 100,
+          structure_type: columns.some((c: any) => c.type === 'PREDECESSOR') ? 'project_plan' : 'general'
+        },
+        insights: this.generateSheetInsights(sheetData),
+        generated_at: new Date().toISOString()
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to generate sheet summary: ${error.message}`);
+    }
+  }
+
+  private generateSheetInsights(sheetData: any): string[] {
+    const insights = [];
+    
+    // Safely extract data with fallbacks
+    const columnInfo = sheetData?.column_info || {};
+    const sampleData = Array.isArray(sheetData?.sample_data) ? sheetData.sample_data : [];
+    const rowCount = sheetData?.row_count || 0;
+    
+    // Convert column_info to columns array format
+    const columns = Object.entries(columnInfo).map(([title, info]: [string, any]) => ({
+      title: title,
+      type: info?.debug?._type_ || info?.type || 'TEXT_NUMBER',
+      id: info?.id
+    }));
+
+    // Check for project plan structure
+    if (Array.isArray(columns) && columns.some((c: any) => c.type === 'PREDECESSOR')) {
+      insights.push("This appears to be a project plan with dependency tracking");
+    }
+
+    // Check data completeness
+    if (Array.isArray(columns) && Array.isArray(sampleData)) {
+      const emptyColumns = columns.filter((col: any) => 
+        !sampleData.some((row: any) => 
+          row && typeof row === 'object' && row[col.title] !== null && row[col.title] !== ''
+        )
+      );
+      if (emptyColumns.length > 0) {
+        insights.push(`${emptyColumns.length} columns appear to have no data`);
+      }
+    }
+
+    // Check for potential issues
+    if (typeof rowCount === 'number' && rowCount > 1000) {
+      insights.push("Large sheet - consider performance optimization");
+    }
+
+    // Check for hierarchy indicators
+    if (Array.isArray(columns) && columns.some((c: any) => 
+      c.title && typeof c.title === 'string' && c.title.toLowerCase().includes('parent')
+    )) {
+      insights.push("Sheet may have hierarchical structure");
+    }
+
+    // Add insight about data availability
+    if (sampleData.length === 0) {
+      insights.push("No sample data available - sheet may be empty or access limited");
+    }
+
+    return insights;
   }
 
   private async generateGanttData(sheetId: string) {
+    try {
+      const structureCommand = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --sheet-id "${sheetId}" --operation get_column_map`;
+      const { stdout } = await execAsync(structureCommand, execOptions);
+      const sheetData = JSON.parse(stdout);
+
+      // Safely extract data with fallbacks
+      const columnInfo = sheetData?.column_info || {};
+      const sampleData = Array.isArray(sheetData?.sample_data) ? sheetData.sample_data : [];
+      
+      // Convert column_info to columns array format
+      const columns = Object.entries(columnInfo).map(([title, info]: [string, any]) => ({
+        title: title,
+        type: info?.debug?._type_ || info?.type || 'TEXT_NUMBER',
+        id: info?.id,
+        primary: title === 'Task Name' // Assume Task Name is primary
+      }));
+      
+      // Find relevant columns for Gantt chart with safe access
+      const taskNameCol = Array.isArray(columns) ? columns.find((c: any) => 
+        c.primary || (c.title && c.title.toLowerCase().includes('task'))
+      ) : null;
+      
+      const startCol = Array.isArray(columns) ? columns.find((c: any) => 
+        c.type === 'ABSTRACT_DATETIME' && c.title && c.title.toLowerCase().includes('start')
+      ) : null;
+      
+      const endCol = Array.isArray(columns) ? columns.find((c: any) => 
+        c.type === 'ABSTRACT_DATETIME' && c.title && c.title.toLowerCase().includes('finish')
+      ) : null;
+      
+      const durationCol = Array.isArray(columns) ? columns.find((c: any) => 
+        c.type === 'DURATION'
+      ) : null;
+      
+      const predecessorCol = Array.isArray(columns) ? columns.find((c: any) => 
+        c.type === 'PREDECESSOR'
+      ) : null;
+      
+      const assignedCol = Array.isArray(columns) ? columns.find((c: any) => 
+        c.type === 'CONTACT_LIST'
+      ) : null;
+
+      if (!taskNameCol) {
+        return {
+          sheet_id: sheetId,
+          gantt_data: {
+            tasks: [],
+            timeline: { project_start: null, project_end: null, total_duration: null, milestones: [] },
+            critical_path: { has_critical_path: false, critical_tasks: [], bottlenecks: [] },
+            resource_allocation: { total_resources: 0, resource_utilization: [], overallocated_resources: [] }
+          },
+          metadata: {
+            total_tasks: 0,
+            has_dependencies: false,
+            has_resources: false,
+            date_range: { earliest: null, latest: null, span_days: null }
+          },
+          message: "No task name column found - cannot generate Gantt data",
+          generated_at: new Date().toISOString()
+        };
+      }
+
+      // Transform data for Gantt visualization with safe access
+      const ganttTasks = Array.isArray(sampleData) ? sampleData.map((row: any, index: number) => ({
+        id: index + 1,
+        name: (row && typeof row === 'object' && row[taskNameCol.title]) || `Task ${index + 1}`,
+        start: startCol && row && typeof row === 'object' ? row[startCol.title] : null,
+        end: endCol && row && typeof row === 'object' ? row[endCol.title] : null,
+        duration: durationCol && row && typeof row === 'object' ? row[durationCol.title] : null,
+        dependencies: predecessorCol && row && typeof row === 'object' ? row[predecessorCol.title] : null,
+        assignee: assignedCol && row && typeof row === 'object' ? row[assignedCol.title] : null,
+        progress: this.calculateProgress(row, columns)
+      })).filter((task: any) => task.name && task.name.trim() !== '') : [];
+
+      return {
+        sheet_id: sheetId,
+        gantt_data: {
+          tasks: ganttTasks,
+          timeline: this.calculateTimeline(ganttTasks),
+          critical_path: this.identifyCriticalPath(ganttTasks),
+          resource_allocation: this.analyzeResourceAllocation(ganttTasks)
+        },
+        metadata: {
+          total_tasks: ganttTasks.length,
+          has_dependencies: !!predecessorCol,
+          has_resources: !!assignedCol,
+          date_range: this.getDateRange(ganttTasks)
+        },
+        generated_at: new Date().toISOString()
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to generate Gantt data: ${error.message}`);
+    }
+  }
+
+  private calculateProgress(row: any, columns: any[]): number {
+    const progressCol = columns.find((c: any) => 
+      c.title.toLowerCase().includes('progress') || 
+      c.title.toLowerCase().includes('complete')
+    );
+    
+    if (progressCol && row[progressCol.title]) {
+      const value = row[progressCol.title];
+      if (typeof value === 'string' && value.includes('%')) {
+        return parseInt(value.replace('%', ''));
+      }
+      if (typeof value === 'number') {
+        return value > 1 ? value : value * 100;
+      }
+    }
+    
+    return 0;
+  }
+
+  private calculateTimeline(ganttTasks: any[]): any {
+    const tasksWithDates = ganttTasks.filter(task => task.start || task.end);
+    
+    if (tasksWithDates.length === 0) {
+      return {
+        project_start: null,
+        project_end: null,
+        total_duration: null,
+        milestones: []
+      };
+    }
+
+    const startDates = tasksWithDates.map(task => task.start).filter(Boolean);
+    const endDates = tasksWithDates.map(task => task.end).filter(Boolean);
+    
+    const projectStart = startDates.length > 0 ? new Date(Math.min(...startDates.map((d: string) => new Date(d).getTime()))) : null;
+    const projectEnd = endDates.length > 0 ? new Date(Math.max(...endDates.map((d: string) => new Date(d).getTime()))) : null;
+    
+    const totalDuration = projectStart && projectEnd ? 
+      Math.ceil((projectEnd.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+    // Identify potential milestones (tasks with 0 duration or specific keywords)
+    const milestones = ganttTasks.filter(task => 
+      task.duration === '0d' || 
+      task.duration === 0 ||
+      task.name.toLowerCase().includes('milestone') ||
+      task.name.toLowerCase().includes('kickoff') ||
+      task.name.toLowerCase().includes('delivery') ||
+      task.name.toLowerCase().includes('launch')
+    );
+
     return {
-      sheet_id: sheetId,
-      gantt_data: 'Gantt chart data would be generated here',
-      generated_at: new Date().toISOString()
+      project_start: projectStart?.toISOString().split('T')[0],
+      project_end: projectEnd?.toISOString().split('T')[0],
+      total_duration: totalDuration,
+      milestones: milestones.map(m => ({
+        name: m.name,
+        date: m.start || m.end,
+        type: this.getMilestoneType(m.name)
+      }))
+    };
+  }
+
+  private getMilestoneType(taskName: string): string {
+    const name = taskName.toLowerCase();
+    if (name.includes('kickoff') || name.includes('start')) return 'project_start';
+    if (name.includes('delivery') || name.includes('launch') || name.includes('go-live')) return 'delivery';
+    if (name.includes('review') || name.includes('approval')) return 'checkpoint';
+    return 'milestone';
+  }
+
+  private identifyCriticalPath(ganttTasks: any[]): any {
+    // Simplified critical path analysis
+    const tasksWithDependencies = ganttTasks.filter(task => task.dependencies);
+    
+    if (tasksWithDependencies.length === 0) {
+      return {
+        has_critical_path: false,
+        critical_tasks: [],
+        bottlenecks: []
+      };
+    }
+
+    // Find tasks that are dependencies for multiple other tasks
+    const dependencyCount: Record<string, number> = {};
+    tasksWithDependencies.forEach(task => {
+      if (task.dependencies) {
+        const deps = task.dependencies.toString().split(',');
+        deps.forEach((dep: string) => {
+          const depId = dep.trim();
+          dependencyCount[depId] = (dependencyCount[depId] || 0) + 1;
+        });
+      }
+    });
+
+    const bottlenecks = Object.entries(dependencyCount)
+      .filter(([_, count]) => count > 1)
+      .map(([taskId, count]) => ({
+        task_id: taskId,
+        dependent_tasks: count,
+        task_name: ganttTasks.find(t => t.id.toString() === taskId)?.name || `Task ${taskId}`
+      }));
+
+    return {
+      has_critical_path: tasksWithDependencies.length > 0,
+      critical_tasks: tasksWithDependencies.slice(0, 5), // Top 5 for brevity
+      bottlenecks: bottlenecks
+    };
+  }
+
+  private analyzeResourceAllocation(ganttTasks: any[]): any {
+    const tasksWithAssignees = ganttTasks.filter(task => task.assignee);
+    
+    if (tasksWithAssignees.length === 0) {
+      return {
+        total_resources: 0,
+        resource_utilization: [],
+        overallocated_resources: []
+      };
+    }
+
+    // Count tasks per assignee
+    const resourceCount: Record<string, number> = {};
+    tasksWithAssignees.forEach(task => {
+      const assignee = task.assignee.toString();
+      resourceCount[assignee] = (resourceCount[assignee] || 0) + 1;
+    });
+
+    const resourceUtilization = Object.entries(resourceCount).map(([resource, taskCount]) => ({
+      resource: resource,
+      assigned_tasks: taskCount,
+      utilization_level: taskCount > 5 ? 'high' : taskCount > 2 ? 'medium' : 'low'
+    }));
+
+    const overallocatedResources = resourceUtilization.filter(r => r.utilization_level === 'high');
+
+    return {
+      total_resources: Object.keys(resourceCount).length,
+      resource_utilization: resourceUtilization,
+      overallocated_resources: overallocatedResources
+    };
+  }
+
+  private getDateRange(ganttTasks: any[]): any {
+    const dates = ganttTasks.flatMap(task => [task.start, task.end]).filter(Boolean);
+    
+    if (dates.length === 0) {
+      return { earliest: null, latest: null, span_days: null };
+    }
+
+    const sortedDates = dates.map(d => new Date(d)).sort((a, b) => a.getTime() - b.getTime());
+    const earliest = sortedDates[0];
+    const latest = sortedDates[sortedDates.length - 1];
+    const spanDays = Math.ceil((latest.getTime() - earliest.getTime()) / (1000 * 60 * 60 * 24));
+
+    return {
+      earliest: earliest.toISOString().split('T')[0],
+      latest: latest.toISOString().split('T')[0],
+      span_days: spanDays
     };
   }
 
   private async generateWorkspaceOverview(workspaceId: string) {
-    return {
-      workspace_id: workspaceId,
-      overview: 'Workspace overview would be generated here',
-      generated_at: new Date().toISOString()
-    };
+    try {
+      // Get workspace details
+      const workspaceCommand = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --workspace-id "${workspaceId}" --operation get_workspace`;
+      const { stdout: workspaceData } = await execAsync(workspaceCommand, execOptions);
+      const workspace = JSON.parse(workspaceData);
+
+      // Get sheets in workspace
+      const sheetsCommand = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --workspace-id "${workspaceId}" --operation list_workspace_sheets`;
+      const { stdout: sheetsData } = await execAsync(sheetsCommand, execOptions);
+      const sheets = JSON.parse(sheetsData);
+
+      // Analyze sheet types and health
+      const sheetAnalysis = await Promise.all(
+        (sheets.sheets || []).slice(0, 10).map(async (sheet: any) => {
+          try {
+            const summaryData = await this.generateSheetSummary(sheet.id);
+            return {
+              id: sheet.id,
+              name: sheet.name,
+              type: summaryData.health_indicators.structure_type,
+              health_score: this.calculateSheetHealthScore(summaryData),
+              last_modified: sheet.modifiedAt,
+              row_count: summaryData.metadata.total_rows
+            };
+          } catch (error) {
+            return {
+              id: sheet.id,
+              name: sheet.name,
+              type: 'unknown',
+              health_score: 0,
+              last_modified: sheet.modifiedAt,
+              row_count: 0,
+              error: 'Failed to analyze'
+            };
+          }
+        })
+      );
+
+      return {
+        workspace_id: workspaceId,
+        workspace_name: workspace.name || 'Unknown Workspace',
+        summary: {
+          total_sheets: sheets.sheets?.length || 0,
+          project_plans: sheetAnalysis.filter(s => s.type === 'project_plan').length,
+          general_sheets: sheetAnalysis.filter(s => s.type === 'general').length,
+          average_health_score: sheetAnalysis.reduce((sum, s) => sum + s.health_score, 0) / sheetAnalysis.length
+        },
+        sheet_analysis: sheetAnalysis,
+        recommendations: this.generateWorkspaceRecommendations(sheetAnalysis),
+        generated_at: new Date().toISOString()
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to generate workspace overview: ${error.message}`);
+    }
+  }
+
+  private calculateSheetHealthScore(summaryData: any): number {
+    let score = 100;
+    
+    // Deduct points for data completeness issues
+    if (summaryData.health_indicators.data_completeness < 80) {
+      score -= (80 - summaryData.health_indicators.data_completeness);
+    }
+    
+    // Deduct points for empty sheets
+    if (summaryData.metadata.total_rows < 5) {
+      score -= 20;
+    }
+    
+    // Add points for good structure
+    if (summaryData.health_indicators.structure_type === 'project_plan') {
+      score += 10;
+    }
+    
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private generateWorkspaceRecommendations(sheetAnalysis: any[]): string[] {
+    const recommendations = [];
+    
+    const lowHealthSheets = sheetAnalysis.filter(s => s.health_score < 60);
+    if (lowHealthSheets.length > 0) {
+      recommendations.push(`${lowHealthSheets.length} sheets have low health scores and may need attention`);
+    }
+    
+    const emptySheets = sheetAnalysis.filter(s => s.row_count === 0);
+    if (emptySheets.length > 0) {
+      recommendations.push(`${emptySheets.length} sheets appear to be empty and could be archived`);
+    }
+    
+    const projectPlans = sheetAnalysis.filter(s => s.type === 'project_plan');
+    if (projectPlans.length > 0) {
+      recommendations.push(`Consider creating a portfolio dashboard to track ${projectPlans.length} project plans`);
+    }
+    
+    return recommendations;
   }
 
   private async generateDependencyMap(sheetId: string) {
-    return {
-      sheet_id: sheetId,
-      dependencies: 'Dependency map would be generated here',
-      generated_at: new Date().toISOString()
-    };
+    try {
+      const structureCommand = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --sheet-id "${sheetId}" --operation get_column_map`;
+      const { stdout } = await execAsync(structureCommand, execOptions);
+      const sheetData = JSON.parse(stdout);
+
+      const { columns, sample_data: sampleData } = sheetData;
+      const predecessorCol = columns.find((c: any) => c.type === 'PREDECESSOR');
+      
+      if (!predecessorCol) {
+        return {
+          sheet_id: sheetId,
+          has_dependencies: false,
+          message: "No dependency column found in this sheet",
+          generated_at: new Date().toISOString()
+        };
+      }
+
+      // Analyze dependencies
+      const dependencyMap = sampleData
+        .filter((row: any) => row[predecessorCol.title])
+        .map((row: any, index: number) => ({
+          task_id: index + 1,
+          task_name: row[columns.find((c: any) => c.primary)?.title] || `Task ${index + 1}`,
+          dependencies: row[predecessorCol.title].toString().split(',').map((d: string) => d.trim()),
+          dependency_type: this.analyzeDependencyType(row[predecessorCol.title])
+        }));
+
+      return {
+        sheet_id: sheetId,
+        has_dependencies: true,
+        dependency_analysis: {
+          total_dependent_tasks: dependencyMap.length,
+          dependency_map: dependencyMap,
+          critical_path_indicators: this.identifyCriticalPath(sampleData),
+          potential_bottlenecks: this.identifyBottlenecks(dependencyMap)
+        },
+        generated_at: new Date().toISOString()
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to generate dependency map: ${error.message}`);
+    }
+  }
+
+  private analyzeDependencyType(dependencyValue: any): string {
+    const depStr = dependencyValue.toString();
+    if (depStr.includes('FS')) return 'Finish-to-Start';
+    if (depStr.includes('SS')) return 'Start-to-Start';
+    if (depStr.includes('FF')) return 'Finish-to-Finish';
+    if (depStr.includes('SF')) return 'Start-to-Finish';
+    return 'Finish-to-Start'; // Default assumption
+  }
+
+  private identifyBottlenecks(dependencyMap: any[]): any[] {
+    const dependencyCounts: Record<string, number> = {};
+    
+    dependencyMap.forEach(task => {
+      task.dependencies.forEach((dep: string) => {
+        dependencyCounts[dep] = (dependencyCounts[dep] || 0) + 1;
+      });
+    });
+
+    return Object.entries(dependencyCounts)
+      .filter(([_, count]) => count > 2)
+      .map(([taskId, count]) => ({
+        task_id: taskId,
+        blocking_tasks: count,
+        risk_level: count > 4 ? 'high' : count > 2 ? 'medium' : 'low'
+      }));
   }
 
   private async generateHealthReport(sheetId: string) {
+    try {
+      const structureCommand = `${this.pythonPath} -m smartsheet_ops.cli --api-key "${this.apiKey}" --sheet-id "${sheetId}" --operation get_column_map`;
+      const { stdout } = await execAsync(structureCommand, execOptions);
+      const sheetData = JSON.parse(stdout);
+
+      const { columns, sample_data: sampleData, row_count } = sheetData;
+
+      // Analyze data quality
+      const dataQuality = this.analyzeDataQuality(columns, sampleData);
+      
+      // Check for formula issues
+      const formulaHealth = this.analyzeFormulaHealth(columns, sampleData);
+      
+      // Performance analysis
+      const performanceMetrics = this.analyzePerformance(sheetData);
+      
+      // Structure analysis
+      const structureHealth = this.analyzeStructureHealth(columns, sampleData);
+
+      const overallHealthScore = this.calculateOverallHealthScore({
+        dataQuality,
+        formulaHealth,
+        performanceMetrics,
+        structureHealth
+      });
+
+      return {
+        sheet_id: sheetId,
+        health_score: overallHealthScore,
+        analysis: {
+          data_quality: dataQuality,
+          formula_health: formulaHealth,
+          performance_metrics: performanceMetrics,
+          structure_health: structureHealth
+        },
+        recommendations: this.generateHealthRecommendations({
+          dataQuality,
+          formulaHealth,
+          performanceMetrics,
+          structureHealth
+        }),
+        generated_at: new Date().toISOString()
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to generate health report: ${error.message}`);
+    }
+  }
+
+  private analyzeDataQuality(columns: any[], sampleData: any[]): any {
+    const totalCells = columns.length * sampleData.length;
+    let filledCells = 0;
+    let inconsistentData = 0;
+
+    columns.forEach(col => {
+      const columnData = sampleData.map(row => row[col.title]).filter(val => val !== null && val !== '');
+      filledCells += columnData.length;
+
+      // Check for data type consistency
+      if (col.type === 'DATE') {
+        const invalidDates = columnData.filter(val => val && isNaN(Date.parse(val))).length;
+        inconsistentData += invalidDates;
+      }
+    });
+
     return {
-      sheet_id: sheetId,
-      health_report: 'Health report would be generated here',
-      generated_at: new Date().toISOString()
+      completeness_percentage: totalCells > 0 ? (filledCells / totalCells) * 100 : 0,
+      consistency_issues: inconsistentData,
+      empty_columns: columns.filter(col => 
+        !sampleData.some(row => row[col.title] !== null && row[col.title] !== '')
+      ).length
     };
+  }
+
+  private analyzeFormulaHealth(columns: any[], sampleData: any[]): any {
+    const formulaColumns = columns.filter(col => col.type === 'FORMULA');
+    
+    return {
+      total_formula_columns: formulaColumns.length,
+      has_formulas: formulaColumns.length > 0,
+      potential_circular_references: 0, // Would need more complex analysis
+      formula_complexity: formulaColumns.length > 5 ? 'high' : formulaColumns.length > 2 ? 'medium' : 'low'
+    };
+  }
+
+  private analyzePerformance(sheetData: any): any {
+    const { row_count, columns } = sheetData;
+    const totalCells = row_count * columns.length;
+
+    return {
+      total_rows: row_count,
+      total_columns: columns.length,
+      total_cells: totalCells,
+      size_category: totalCells > 50000 ? 'large' : totalCells > 10000 ? 'medium' : 'small',
+      performance_risk: totalCells > 100000 ? 'high' : totalCells > 50000 ? 'medium' : 'low'
+    };
+  }
+
+  private analyzeStructureHealth(columns: any[], sampleData: any[]): any {
+    const hasProjectStructure = columns.some(c => c.type === 'PREDECESSOR');
+    const hasDates = columns.some(c => c.type === 'DATE');
+    const hasAssignments = columns.some(c => c.type === 'CONTACT_LIST');
+    const hasStatus = columns.some(c => c.type === 'PICKLIST');
+
+    return {
+      is_project_plan: hasProjectStructure,
+      has_date_tracking: hasDates,
+      has_resource_assignments: hasAssignments,
+      has_status_tracking: hasStatus,
+      structure_completeness: [hasProjectStructure, hasDates, hasAssignments, hasStatus].filter(Boolean).length / 4 * 100
+    };
+  }
+
+  private calculateOverallHealthScore(analysis: any): number {
+    const weights = {
+      dataQuality: 0.4,
+      formulaHealth: 0.2,
+      performanceMetrics: 0.2,
+      structureHealth: 0.2
+    };
+
+    let score = 0;
+    
+    // Data quality score
+    score += (analysis.dataQuality.completeness_percentage * 0.8 + 
+             (100 - analysis.dataQuality.consistency_issues * 10)) * weights.dataQuality / 100;
+    
+    // Formula health score (simplified)
+    const formulaScore = analysis.formulaHealth.has_formulas ? 80 : 100;
+    score += formulaScore * weights.formulaHealth / 100;
+    
+    // Performance score
+    const perfScore = analysis.performanceMetrics.performance_risk === 'low' ? 100 : 
+                     analysis.performanceMetrics.performance_risk === 'medium' ? 70 : 40;
+    score += perfScore * weights.performanceMetrics / 100;
+    
+    // Structure score
+    score += analysis.structureHealth.structure_completeness * weights.structureHealth / 100;
+
+    return Math.round(score);
+  }
+
+  private generateHealthRecommendations(analysis: any): string[] {
+    const recommendations = [];
+
+    if (analysis.dataQuality.completeness_percentage < 80) {
+      recommendations.push("Improve data completeness - consider making key fields required");
+    }
+
+    if (analysis.dataQuality.empty_columns > 0) {
+      recommendations.push(`Remove or populate ${analysis.dataQuality.empty_columns} empty columns`);
+    }
+
+    if (analysis.performanceMetrics.performance_risk === 'high') {
+      recommendations.push("Consider archiving old data or splitting into multiple sheets for better performance");
+    }
+
+    if (!analysis.structureHealth.has_status_tracking) {
+      recommendations.push("Add status tracking column for better project visibility");
+    }
+
+    if (analysis.formulaHealth.formula_complexity === 'high') {
+      recommendations.push("Review complex formulas for optimization opportunities");
+    }
+
+    return recommendations;
   }
 
   // Helper methods for generating prompts
