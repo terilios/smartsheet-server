@@ -723,6 +723,392 @@ class SmartsheetServer {
           },
           required: ['workspace_id']
         }
+      },
+      // Attachment Management Tools
+      {
+        name: 'smartsheet_upload_attachment',
+        description: 'Upload a file attachment to a sheet, row, or comment',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            file_path: {
+              type: 'string',
+              description: 'Local path to the file to upload'
+            },
+            attachment_type: {
+              type: 'string',
+              description: 'Type of attachment target',
+              enum: ['sheet', 'row', 'comment']
+            },
+            target_id: {
+              type: 'string',
+              description: 'Row ID or Comment ID (not needed for sheet attachments)'
+            },
+            file_name: {
+              type: 'string',
+              description: 'Optional custom name for the uploaded file'
+            }
+          },
+          required: ['sheet_id', 'file_path', 'attachment_type']
+        }
+      },
+      {
+        name: 'smartsheet_get_attachments',
+        description: 'List all attachments for a sheet or row',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            attachment_type: {
+              type: 'string',
+              description: 'Type of attachment target',
+              enum: ['sheet', 'row']
+            },
+            target_id: {
+              type: 'string',
+              description: 'Row ID (only for row attachments)'
+            }
+          },
+          required: ['sheet_id', 'attachment_type']
+        }
+      },
+      {
+        name: 'smartsheet_download_attachment',
+        description: 'Download a specific attachment',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            attachment_id: {
+              type: 'string',
+              description: 'Attachment ID to download'
+            },
+            save_path: {
+              type: 'string',
+              description: 'Local path where to save the file'
+            }
+          },
+          required: ['sheet_id', 'attachment_id', 'save_path']
+        }
+      },
+      {
+        name: 'smartsheet_delete_attachment',
+        description: 'Delete an attachment from a sheet',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            attachment_id: {
+              type: 'string',
+              description: 'Attachment ID to delete'
+            }
+          },
+          required: ['sheet_id', 'attachment_id']
+        }
+      },
+      // Comments and Discussions Tools
+      {
+        name: 'smartsheet_create_discussion',
+        description: 'Create a new discussion thread on a sheet or row',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            discussion_type: {
+              type: 'string',
+              description: 'Type of discussion target',
+              enum: ['sheet', 'row']
+            },
+            target_id: {
+              type: 'string',
+              description: 'Row ID (only for row discussions)'
+            },
+            title: {
+              type: 'string',
+              description: 'Discussion title/subject'
+            },
+            comment_text: {
+              type: 'string',
+              description: 'Initial comment text for the discussion'
+            }
+          },
+          required: ['sheet_id', 'discussion_type', 'comment_text']
+        }
+      },
+      {
+        name: 'smartsheet_add_comment',
+        description: 'Add a comment to an existing discussion',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            discussion_id: {
+              type: 'string',
+              description: 'Discussion ID to add comment to'
+            },
+            comment_text: {
+              type: 'string',
+              description: 'Comment text to add'
+            }
+          },
+          required: ['sheet_id', 'discussion_id', 'comment_text']
+        }
+      },
+      {
+        name: 'smartsheet_get_discussions',
+        description: 'List all discussions for a sheet or row',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            discussion_type: {
+              type: 'string',
+              description: 'Type of discussion target',
+              enum: ['sheet', 'row']
+            },
+            target_id: {
+              type: 'string',
+              description: 'Row ID (only for row discussions)'
+            },
+            include_comments: {
+              type: 'boolean',
+              description: 'Include all comments in discussions',
+              default: false
+            }
+          },
+          required: ['sheet_id', 'discussion_type']
+        }
+      },
+      {
+        name: 'smartsheet_get_comments',
+        description: 'Get all comments in a discussion thread',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            discussion_id: {
+              type: 'string',
+              description: 'Discussion ID to get comments from'
+            },
+            include_attachments: {
+              type: 'boolean',
+              description: 'Include attachment information',
+              default: true
+            }
+          },
+          required: ['sheet_id', 'discussion_id']
+        }
+      },
+      {
+        name: 'smartsheet_delete_comment',
+        description: 'Delete a specific comment from a discussion',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            comment_id: {
+              type: 'string',
+              description: 'Comment ID to delete'
+            }
+          },
+          required: ['sheet_id', 'comment_id']
+        }
+      },
+      // Cell History and Audit Tracking Tools
+      {
+        name: 'smartsheet_get_cell_history',
+        description: 'Get modification history for a specific cell',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            row_id: {
+              type: 'string',
+              description: 'Row ID containing the cell'
+            },
+            column_id: {
+              type: 'string',
+              description: 'Column ID of the cell'
+            },
+            include_all: {
+              type: 'boolean',
+              description: 'Include all historical data',
+              default: true
+            }
+          },
+          required: ['sheet_id', 'row_id', 'column_id']
+        }
+      },
+      {
+        name: 'smartsheet_get_row_history',
+        description: 'Get change history for an entire row (all cells)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID'
+            },
+            row_id: {
+              type: 'string',
+              description: 'Row ID to get history for'
+            },
+            include_all: {
+              type: 'boolean',
+              description: 'Include all historical data',
+              default: true
+            },
+            column_ids: {
+              type: 'array',
+              description: 'Specific column IDs to get history for (optional)',
+              items: {
+                type: 'string'
+              }
+            }
+          },
+          required: ['sheet_id', 'row_id']
+        }
+      },
+      // Cross-Sheet References Tools
+      {
+        name: 'smartsheet_get_sheet_cross_references',
+        description: 'Get all cross-sheet references in a sheet (formulas that reference other sheets)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID to analyze'
+            },
+            include_details: {
+              type: 'boolean',
+              description: 'Include detailed formula analysis',
+              default: true
+            }
+          },
+          required: ['sheet_id']
+        }
+      },
+      {
+        name: 'smartsheet_find_sheet_references',
+        description: 'Find all sheets that reference a specific sheet',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            target_sheet_id: {
+              type: 'string',
+              description: 'Sheet ID to find references to'
+            },
+            workspace_id: {
+              type: 'string',
+              description: 'Optional workspace ID to limit search scope'
+            }
+          },
+          required: ['target_sheet_id']
+        }
+      },
+      {
+        name: 'smartsheet_validate_cross_references',
+        description: 'Validate all cross-sheet references in a sheet and check for broken links',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Smartsheet sheet ID to validate'
+            },
+            fix_broken: {
+              type: 'boolean',
+              description: 'Attempt to fix broken references automatically',
+              default: false
+            }
+          },
+          required: ['sheet_id']
+        }
+      },
+      {
+        name: 'smartsheet_create_cross_reference',
+        description: 'Create or update cross-sheet reference formulas',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sheet_id: {
+              type: 'string',
+              description: 'Source sheet ID'
+            },
+            target_sheet_id: {
+              type: 'string',
+              description: 'Target sheet ID to reference'
+            },
+            formula_config: {
+              type: 'object',
+              description: 'Formula configuration',
+              properties: {
+                source_column_id: {
+                  type: 'string',
+                  description: 'Column ID in source sheet to place formula'
+                },
+                target_column_id: {
+                  type: 'string',
+                  description: 'Column ID in target sheet to reference'
+                },
+                formula_type: {
+                  type: 'string',
+                  description: 'Type of cross-reference formula',
+                  enum: ['INDEX_MATCH', 'VLOOKUP', 'SUMIF', 'COUNTIF', 'CUSTOM']
+                },
+                lookup_column_id: {
+                  type: 'string',
+                  description: 'Column ID to use for lookup (for INDEX_MATCH, VLOOKUP)'
+                },
+                custom_formula: {
+                  type: 'string',
+                  description: 'Custom formula template (for CUSTOM type)'
+                }
+              },
+              required: ['source_column_id', 'target_column_id', 'formula_type']
+            },
+            row_ids: {
+              type: 'array',
+              description: 'Specific row IDs to apply formula to (optional, applies to all if not specified)',
+              items: {
+                type: 'string'
+              }
+            }
+          },
+          required: ['sheet_id', 'target_sheet_id', 'formula_config']
+        }
       }
     ];
   }
@@ -775,7 +1161,26 @@ class SmartsheetServer {
         'get_workspace': 'get_workspace',
         'create_workspace': 'create_workspace',
         'create_sheet_in_workspace': 'create_sheet_in_workspace',
-        'list_workspace_sheets': 'list_workspace_sheets'
+        'list_workspace_sheets': 'list_workspace_sheets',
+        // Attachment operations
+        'smartsheet_upload_attachment': 'upload_attachment',
+        'smartsheet_get_attachments': 'get_attachments',
+        'smartsheet_download_attachment': 'download_attachment',
+        'smartsheet_delete_attachment': 'delete_attachment',
+        // Discussion and comment operations
+        'smartsheet_create_discussion': 'create_discussion',
+        'smartsheet_add_comment': 'add_comment',
+        'smartsheet_get_discussions': 'get_discussions',
+        'smartsheet_get_comments': 'get_comments',
+        'smartsheet_delete_comment': 'delete_comment',
+        // Cell history operations
+        'smartsheet_get_cell_history': 'get_cell_history',
+        'smartsheet_get_row_history': 'get_row_history',
+        // Cross-sheet reference operations
+        'smartsheet_get_sheet_cross_references': 'get_sheet_cross_references',
+        'smartsheet_find_sheet_references': 'find_sheet_references',
+        'smartsheet_validate_cross_references': 'validate_cross_references',
+        'smartsheet_create_cross_reference': 'create_cross_reference'
       };
 
       const operation = operationMap[name];

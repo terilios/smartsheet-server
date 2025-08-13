@@ -1,7 +1,12 @@
 import smartsheet
 import json
 import re
+import logging
 from typing import Dict, List, Optional, Any, Tuple, Union
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # System column types in their exact API form
 SYSTEM_COLUMN_TYPES = {
@@ -38,8 +43,21 @@ ALL_COLUMN_TYPES = SYSTEM_COLUMN_TYPES | PROJECT_COLUMN_TYPES | MULTI_VALUE_COLU
 
 class SmartsheetOperations:
     def __init__(self, api_key: str):
-        self.client = smartsheet.Smartsheet(api_key)
-        self.client.errors_as_exceptions(True)
+        """Initialize SmartsheetOperations with proper error handling."""
+        if not api_key:
+            raise ValueError("API key is required and cannot be empty")
+        
+        if not isinstance(api_key, str):
+            raise ValueError("API key must be a string")
+        
+        try:
+            logger.info("Initializing Smartsheet client")
+            self.client = smartsheet.Smartsheet(api_key)
+            self.client.errors_as_exceptions(True)
+            logger.info("Smartsheet client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Smartsheet client: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to initialize Smartsheet client: {str(e)}")
 
     def _normalize_column_type(self, value: Optional[str]) -> Optional[str]:
         """Normalize column type for system type detection."""
@@ -227,62 +245,127 @@ class SmartsheetOperations:
 
     def get_sheet_info(self, sheet_id: str) -> Dict[str, Any]:
         """Get sheet information including columns and sample data."""
+        logger.info(f"Getting sheet info for sheet ID: {sheet_id}")
+        
+        # Input validation
+        if not sheet_id or not isinstance(sheet_id, str):
+            error_msg = f"Invalid sheet_id provided: {sheet_id}"
+            logger.error(error_msg)
+            return {"error": error_msg}
+        
         try:
             # Get the sheet with level parameter for complex column types
+            logger.debug(f"Fetching sheet data from Smartsheet API")
             sheet = self.client.Sheets.get_sheet(
                 sheet_id,
                 level=2,
                 include='objectValue'
             )
             
-            # Get columns
-            columns = sheet.columns
+            # Validate sheet response
+            if not sheet:
+                error_msg = f"Sheet not found or access denied for sheet ID: {sheet_id}"
+                logger.error(error_msg)
+                return {"error": error_msg}
+            
+            # Get columns with proper error handling
+            columns = getattr(sheet, 'columns', None)
+            if not columns:
+                logger.warning(f"No columns found for sheet {sheet_id}")
+                return {
+                    "success": True,
+                    "sheet_id": sheet_id,
+                    "column_map": {},
+                    "column_info": {},
+                    "sample_data": [],
+                    "usage_example": {"column_map": {}, "row_data": []}
+                }
+            
             column_map = {}
             column_info = {}
             
             # First pass: Map column titles to IDs
-            for col in columns:
-                try:
-                    column_map[col.title] = str(col.id_)
-                except:
-                    continue
+            try:
+                for col in columns:
+                    try:
+                        col_title = getattr(col, 'title', None)
+                        col_id = getattr(col, 'id_', getattr(col, 'id', None))
+                        
+                        if col_title and col_id:
+                            column_map[col_title] = str(col_id)
+                        else:
+                            logger.warning(f"Skipping column with missing title or id: title={col_title}, id={col_id}")
+                    except Exception as col_error:
+                        logger.warning(f"Error processing column: {col_error}")
+                        continue
+            except Exception as e:
+                logger.error(f"Error iterating over columns: {e}")
+                return {"error": f"Failed to process sheet columns: {str(e)}"}
             
             # Second pass: Gather detailed info for each column
             for col in columns:
                 try:
-                    if col.title in column_map:
-                        column_info[col.title] = self.get_column_info(col)
-                except:
-                    # Fallback to a minimal info if we fail parsing
-                    if col.title in column_map:
-                        column_info[col.title] = {
-                            "id": column_map[col.title],
-                            "type": "TEXT_NUMBER"
-                        }
+                    col_title = getattr(col, 'title', None)
+                    if col_title and col_title in column_map:
+                        try:
+                            column_info[col_title] = self.get_column_info(col)
+                        except Exception as info_error:
+                            logger.warning(f"Error getting column info for {col_title}: {info_error}")
+                            # Fallback to minimal info
+                            column_info[col_title] = {
+                                "id": column_map[col_title],
+                                "type": "TEXT_NUMBER"
+                            }
+                except Exception as col_error:
+                    logger.warning(f"Error processing column details: {col_error}")
+                    continue
             
             # Gather up to 5 rows of sample data
             sample_data = []
-            for i, row in enumerate(sheet.rows):
-                if i >= 5:
-                    break
-                row_data = {
-                    "__id": str(row.id)  # Include row ID in the data
-                }
-                for cell in row.cells:
-                    # Find the column title for this cell
-                    for col in columns:
-                        if str(col.id_) == str(cell.column_id):
-                            row_data[col.title] = cell.value
-                            break
-                sample_data.append(row_data)
+            try:
+                rows = getattr(sheet, 'rows', [])
+                for i, row in enumerate(rows):
+                    if i >= 5:
+                        break
+                    
+                    try:
+                        row_id = getattr(row, 'id', None)
+                        row_data = {"__id": str(row_id) if row_id else f"row_{i}"}
+                        
+                        cells = getattr(row, 'cells', [])
+                        for cell in cells:
+                            try:
+                                cell_column_id = getattr(cell, 'column_id', None)
+                                cell_value = getattr(cell, 'value', None)
+                                
+                                # Find the column title for this cell
+                                for col in columns:
+                                    col_id = getattr(col, 'id_', getattr(col, 'id', None))
+                                    col_title = getattr(col, 'title', None)
+                                    
+                                    if col_id and str(col_id) == str(cell_column_id):
+                                        row_data[col_title] = cell_value
+                                        break
+                            except Exception as cell_error:
+                                logger.warning(f"Error processing cell: {cell_error}")
+                                continue
+                        
+                        sample_data.append(row_data)
+                    except Exception as row_error:
+                        logger.warning(f"Error processing row {i}: {row_error}")
+                        continue
+            except Exception as rows_error:
+                logger.warning(f"Error processing rows: {rows_error}")
             
             # Create an example row using the column_map
             example_row = {}
             for title in column_map.keys():
                 example_row[title] = "sample_value"
             
-            # Prepare final response
-            return {
+            # Prepare successful response
+            result = {
+                "success": True,
+                "sheet_id": sheet_id,
                 "column_map": column_map,
                 "column_info": column_info,
                 "sample_data": sample_data,
@@ -292,8 +375,13 @@ class SmartsheetOperations:
                 }
             }
             
+            logger.info(f"Successfully retrieved sheet info for {sheet_id}: {len(column_map)} columns, {len(sample_data)} sample rows")
+            return result
+            
         except Exception as e:
-            raise RuntimeError(f"Failed to get sheet info: {str(e)}")
+            error_msg = f"Failed to get sheet info for {sheet_id}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return {"error": error_msg}
 
     def _create_cell(self, column_id: int, value: Any, column_info: Dict) -> smartsheet.models.Cell:
         """Create a cell with proper handling of multi-select picklist values."""
@@ -1530,3 +1618,1106 @@ class SmartsheetOperations:
             
         except Exception as e:
             raise RuntimeError(f"Failed to list workspace sheets: {str(e)}")
+    
+    # Attachment Management Methods
+    def upload_attachment(
+        self,
+        sheet_id: str,
+        file_path: str,
+        attachment_type: str,
+        target_id: Optional[str] = None,
+        file_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Upload a file attachment to a sheet, row, or comment.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            file_path: Local path to the file to upload
+            attachment_type: Type of attachment ('sheet', 'row', 'comment')
+            target_id: Row ID or Comment ID (not needed for sheet attachments)
+            file_name: Optional custom name for the uploaded file
+        
+        Returns:
+            Dict containing attachment details and upload status
+        """
+        try:
+            import os
+            
+            # Validate file exists
+            if not os.path.exists(file_path):
+                return {"error": f"File not found: {file_path}"}
+            
+            # Get file size
+            file_size = os.path.getsize(file_path)
+            if file_size > 100 * 1024 * 1024:  # 100MB limit
+                return {"error": f"File too large: {file_size} bytes (max 100MB)"}
+            
+            # Use custom name or original filename
+            if not file_name:
+                file_name = os.path.basename(file_path)
+            
+            result = None
+            
+            if attachment_type == 'sheet':
+                # Attach to sheet
+                result = self.client.Attachments.attach_file_to_sheet(
+                    sheet_id,
+                    open(file_path, 'rb'),
+                    file_name,
+                    file_size
+                )
+            elif attachment_type == 'row':
+                if not target_id:
+                    return {"error": "Row ID required for row attachments"}
+                # Attach to row
+                result = self.client.Attachments.attach_file_to_row(
+                    sheet_id,
+                    int(target_id),
+                    open(file_path, 'rb'),
+                    file_name,
+                    file_size
+                )
+            elif attachment_type == 'comment':
+                if not target_id:
+                    return {"error": "Comment ID required for comment attachments"}
+                # Attach to comment
+                result = self.client.Attachments.attach_file_to_comment(
+                    sheet_id,
+                    int(target_id),
+                    open(file_path, 'rb'),
+                    file_name,
+                    file_size
+                )
+            else:
+                return {"error": f"Invalid attachment type: {attachment_type}"}
+            
+            if result and result.result:
+                attachment = result.result
+                return {
+                    "success": True,
+                    "attachment_id": str(attachment.id),
+                    "name": attachment.name,
+                    "url": attachment.url if hasattr(attachment, 'url') else None,
+                    "size_bytes": attachment.size_in_kb * 1024 if hasattr(attachment, 'size_in_kb') else file_size,
+                    "attachment_type": attachment_type,
+                    "target_id": target_id,
+                    "created_at": str(attachment.created_at) if hasattr(attachment, 'created_at') else None
+                }
+            else:
+                return {"error": "Failed to upload attachment"}
+                
+        except Exception as e:
+            return {"error": f"Failed to upload attachment: {str(e)}"}
+    
+    def get_attachments(
+        self,
+        sheet_id: str,
+        attachment_type: str,
+        target_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        List all attachments for a sheet or row.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            attachment_type: Type of attachment target ('sheet' or 'row')
+            target_id: Row ID (only for row attachments)
+        
+        Returns:
+            Dict containing list of attachments and metadata
+        """
+        try:
+            attachments_list = []
+            
+            if attachment_type == 'sheet':
+                # Get sheet attachments
+                response = self.client.Attachments.list_all_attachments(
+                    sheet_id,
+                    include_all=True
+                )
+                if response and response.data:
+                    for attachment in response.data:
+                        attachments_list.append({
+                            "attachment_id": str(attachment.id),
+                            "name": attachment.name,
+                            "url": attachment.url if hasattr(attachment, 'url') else None,
+                            "url_expires_in_millis": attachment.url_expires_in_millis if hasattr(attachment, 'url_expires_in_millis') else None,
+                            "size_bytes": attachment.size_in_kb * 1024 if hasattr(attachment, 'size_in_kb') else None,
+                            "attachment_type": attachment.attachment_type if hasattr(attachment, 'attachment_type') else None,
+                            "mime_type": attachment.mime_type if hasattr(attachment, 'mime_type') else None,
+                            "created_at": str(attachment.created_at) if hasattr(attachment, 'created_at') else None,
+                            "created_by": attachment.created_by.email if hasattr(attachment, 'created_by') and hasattr(attachment.created_by, 'email') else None
+                        })
+                        
+            elif attachment_type == 'row':
+                if not target_id:
+                    return {"error": "Row ID required for row attachments"}
+                # Get row attachments
+                response = self.client.Attachments.list_row_attachments(
+                    sheet_id,
+                    int(target_id),
+                    include_all=True
+                )
+                if response and response.data:
+                    for attachment in response.data:
+                        attachments_list.append({
+                            "attachment_id": str(attachment.id),
+                            "name": attachment.name,
+                            "url": attachment.url if hasattr(attachment, 'url') else None,
+                            "url_expires_in_millis": attachment.url_expires_in_millis if hasattr(attachment, 'url_expires_in_millis') else None,
+                            "size_bytes": attachment.size_in_kb * 1024 if hasattr(attachment, 'size_in_kb') else None,
+                            "attachment_type": attachment.attachment_type if hasattr(attachment, 'attachment_type') else None,
+                            "mime_type": attachment.mime_type if hasattr(attachment, 'mime_type') else None,
+                            "created_at": str(attachment.created_at) if hasattr(attachment, 'created_at') else None,
+                            "created_by": attachment.created_by.email if hasattr(attachment, 'created_by') and hasattr(attachment.created_by, 'email') else None
+                        })
+            else:
+                return {"error": f"Invalid attachment type: {attachment_type}"}
+            
+            return {
+                "success": True,
+                "attachments": attachments_list,
+                "total_count": len(attachments_list),
+                "attachment_type": attachment_type,
+                "target_id": target_id
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to get attachments: {str(e)}"}
+    
+    def download_attachment(
+        self,
+        sheet_id: str,
+        attachment_id: str,
+        save_path: str
+    ) -> Dict[str, Any]:
+        """
+        Download a specific attachment.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            attachment_id: Attachment ID to download
+            save_path: Local path where to save the file
+        
+        Returns:
+            Dict containing download status and file information
+        """
+        try:
+            import os
+            import urllib.request
+            
+            # Get attachment details
+            attachment = self.client.Attachments.get_attachment(sheet_id, int(attachment_id))
+            
+            if not attachment or not attachment.url:
+                return {"error": "Attachment not found or URL not available"}
+            
+            # Create directory if it doesn't exist
+            save_dir = os.path.dirname(save_path)
+            if save_dir and not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            
+            # Download the file
+            urllib.request.urlretrieve(attachment.url, save_path)
+            
+            # Verify download
+            if os.path.exists(save_path):
+                file_size = os.path.getsize(save_path)
+                return {
+                    "success": True,
+                    "attachment_id": attachment_id,
+                    "name": attachment.name,
+                    "saved_to": save_path,
+                    "size_bytes": file_size,
+                    "mime_type": attachment.mime_type if hasattr(attachment, 'mime_type') else None
+                }
+            else:
+                return {"error": "Failed to save file"}
+                
+        except Exception as e:
+            return {"error": f"Failed to download attachment: {str(e)}"}
+    
+    def delete_attachment(
+        self,
+        sheet_id: str,
+        attachment_id: str
+    ) -> Dict[str, Any]:
+        """
+        Delete an attachment from a sheet.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            attachment_id: Attachment ID to delete
+        
+        Returns:
+            Dict containing deletion status
+        """
+        try:
+            # Delete the attachment
+            result = self.client.Attachments.delete_attachment(sheet_id, int(attachment_id))
+            
+            return {
+                "success": True,
+                "attachment_id": attachment_id,
+                "message": "Attachment deleted successfully"
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to delete attachment: {str(e)}"}
+    
+    # Discussion and Comment Management Methods
+    def create_discussion(
+        self,
+        sheet_id: str,
+        discussion_type: str,
+        comment_text: str,
+        target_id: Optional[str] = None,
+        title: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new discussion thread on a sheet or row.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            discussion_type: Type of discussion ('sheet' or 'row')
+            comment_text: Initial comment text for the discussion
+            target_id: Row ID (only for row discussions)
+            title: Discussion title/subject (optional)
+        
+        Returns:
+            Dict containing discussion details and creation status
+        """
+        try:
+            import smartsheet.models as models
+            
+            # Create the initial comment
+            comment = models.Comment()
+            comment.text = comment_text
+            
+            result = None
+            
+            if discussion_type == 'sheet':
+                # Create discussion on sheet
+                result = self.client.Discussions.create_discussion_on_sheet(
+                    sheet_id,
+                    comment
+                )
+            elif discussion_type == 'row':
+                if not target_id:
+                    return {"error": "Row ID required for row discussions"}
+                # Create discussion on row
+                result = self.client.Discussions.create_discussion_on_row(
+                    sheet_id,
+                    int(target_id),
+                    comment
+                )
+            else:
+                return {"error": f"Invalid discussion type: {discussion_type}"}
+            
+            if result and result.result:
+                discussion = result.result
+                return {
+                    "success": True,
+                    "discussion_id": str(discussion.id),
+                    "title": discussion.title if hasattr(discussion, 'title') else title,
+                    "comment_count": discussion.comment_count if hasattr(discussion, 'comment_count') else 1,
+                    "discussion_type": discussion_type,
+                    "target_id": target_id,
+                    "created_by": discussion.created_by.email if hasattr(discussion, 'created_by') and hasattr(discussion.created_by, 'email') else None,
+                    "created_at": str(discussion.created_at) if hasattr(discussion, 'created_at') else None,
+                    "last_commented_user": discussion.last_commented_user.email if hasattr(discussion, 'last_commented_user') and hasattr(discussion.last_commented_user, 'email') else None,
+                    "last_commented_at": str(discussion.last_commented_at) if hasattr(discussion, 'last_commented_at') else None
+                }
+            else:
+                return {"error": "Failed to create discussion"}
+                
+        except Exception as e:
+            return {"error": f"Failed to create discussion: {str(e)}"}
+    
+    def add_comment(
+        self,
+        sheet_id: str,
+        discussion_id: str,
+        comment_text: str
+    ) -> Dict[str, Any]:
+        """
+        Add a comment to an existing discussion.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            discussion_id: Discussion ID to add comment to
+            comment_text: Comment text to add
+        
+        Returns:
+            Dict containing comment details and creation status
+        """
+        try:
+            import smartsheet.models as models
+            
+            # Create the comment
+            comment = models.Comment()
+            comment.text = comment_text
+            
+            # Add comment to discussion
+            result = self.client.Discussions.add_comment_to_discussion(
+                sheet_id,
+                int(discussion_id),
+                comment
+            )
+            
+            if result and result.result:
+                new_comment = result.result
+                return {
+                    "success": True,
+                    "comment_id": str(new_comment.id),
+                    "discussion_id": discussion_id,
+                    "text": new_comment.text,
+                    "created_by": new_comment.created_by.email if hasattr(new_comment, 'created_by') and hasattr(new_comment.created_by, 'email') else None,
+                    "created_at": str(new_comment.created_at) if hasattr(new_comment, 'created_at') else None,
+                    "modified_at": str(new_comment.modified_at) if hasattr(new_comment, 'modified_at') else None
+                }
+            else:
+                return {"error": "Failed to add comment"}
+                
+        except Exception as e:
+            return {"error": f"Failed to add comment: {str(e)}"}
+    
+    def get_discussions(
+        self,
+        sheet_id: str,
+        discussion_type: str,
+        target_id: Optional[str] = None,
+        include_comments: bool = False
+    ) -> Dict[str, Any]:
+        """
+        List all discussions for a sheet or row.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            discussion_type: Type of discussion target ('sheet' or 'row')
+            target_id: Row ID (only for row discussions)
+            include_comments: Include all comments in discussions
+        
+        Returns:
+            Dict containing list of discussions and metadata
+        """
+        try:
+            discussions_list = []
+            
+            if discussion_type == 'sheet':
+                # Get sheet discussions
+                response = self.client.Discussions.get_all_discussions(
+                    sheet_id,
+                    include_all=True if include_comments else False
+                )
+                if response and response.data:
+                    for discussion in response.data:
+                        discussion_data = {
+                            "discussion_id": str(discussion.id),
+                            "title": discussion.title if hasattr(discussion, 'title') else None,
+                            "comment_count": discussion.comment_count if hasattr(discussion, 'comment_count') else 0,
+                            "created_by": discussion.created_by.email if hasattr(discussion, 'created_by') and hasattr(discussion.created_by, 'email') else None,
+                            "created_at": str(discussion.created_at) if hasattr(discussion, 'created_at') else None,
+                            "last_commented_user": discussion.last_commented_user.email if hasattr(discussion, 'last_commented_user') and hasattr(discussion.last_commented_user, 'email') else None,
+                            "last_commented_at": str(discussion.last_commented_at) if hasattr(discussion, 'last_commented_at') else None
+                        }
+                        
+                        # Include comments if requested
+                        if include_comments and hasattr(discussion, 'comments') and discussion.comments:
+                            discussion_data["comments"] = []
+                            for comment in discussion.comments:
+                                comment_data = {
+                                    "comment_id": str(comment.id),
+                                    "text": comment.text,
+                                    "created_by": comment.created_by.email if hasattr(comment, 'created_by') and hasattr(comment.created_by, 'email') else None,
+                                    "created_at": str(comment.created_at) if hasattr(comment, 'created_at') else None,
+                                    "modified_at": str(comment.modified_at) if hasattr(comment, 'modified_at') else None
+                                }
+                                discussion_data["comments"].append(comment_data)
+                        
+                        discussions_list.append(discussion_data)
+                        
+            elif discussion_type == 'row':
+                if not target_id:
+                    return {"error": "Row ID required for row discussions"}
+                # Get row discussions
+                response = self.client.Discussions.get_row_discussions(
+                    sheet_id,
+                    int(target_id),
+                    include_all=True if include_comments else False
+                )
+                if response and response.data:
+                    for discussion in response.data:
+                        discussion_data = {
+                            "discussion_id": str(discussion.id),
+                            "title": discussion.title if hasattr(discussion, 'title') else None,
+                            "comment_count": discussion.comment_count if hasattr(discussion, 'comment_count') else 0,
+                            "created_by": discussion.created_by.email if hasattr(discussion, 'created_by') and hasattr(discussion.created_by, 'email') else None,
+                            "created_at": str(discussion.created_at) if hasattr(discussion, 'created_at') else None,
+                            "last_commented_user": discussion.last_commented_user.email if hasattr(discussion, 'last_commented_user') and hasattr(discussion.last_commented_user, 'email') else None,
+                            "last_commented_at": str(discussion.last_commented_at) if hasattr(discussion, 'last_commented_at') else None
+                        }
+                        
+                        # Include comments if requested
+                        if include_comments and hasattr(discussion, 'comments') and discussion.comments:
+                            discussion_data["comments"] = []
+                            for comment in discussion.comments:
+                                comment_data = {
+                                    "comment_id": str(comment.id),
+                                    "text": comment.text,
+                                    "created_by": comment.created_by.email if hasattr(comment, 'created_by') and hasattr(comment.created_by, 'email') else None,
+                                    "created_at": str(comment.created_at) if hasattr(comment, 'created_at') else None,
+                                    "modified_at": str(comment.modified_at) if hasattr(comment, 'modified_at') else None
+                                }
+                                discussion_data["comments"].append(comment_data)
+                        
+                        discussions_list.append(discussion_data)
+            else:
+                return {"error": f"Invalid discussion type: {discussion_type}"}
+            
+            return {
+                "success": True,
+                "discussions": discussions_list,
+                "total_count": len(discussions_list),
+                "discussion_type": discussion_type,
+                "target_id": target_id,
+                "include_comments": include_comments
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to get discussions: {str(e)}"}
+    
+    def get_comments(
+        self,
+        sheet_id: str,
+        discussion_id: str,
+        include_attachments: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Get all comments in a discussion thread.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            discussion_id: Discussion ID to get comments from
+            include_attachments: Include attachment information
+        
+        Returns:
+            Dict containing list of comments and metadata
+        """
+        try:
+            # Get the specific discussion with comments
+            discussion = self.client.Discussions.get_discussion(
+                sheet_id,
+                int(discussion_id)
+            )
+            
+            if not discussion:
+                return {"error": "Discussion not found"}
+            
+            comments_list = []
+            if hasattr(discussion, 'comments') and discussion.comments:
+                for comment in discussion.comments:
+                    comment_data = {
+                        "comment_id": str(comment.id),
+                        "text": comment.text,
+                        "created_by": comment.created_by.email if hasattr(comment, 'created_by') and hasattr(comment.created_by, 'email') else None,
+                        "created_at": str(comment.created_at) if hasattr(comment, 'created_at') else None,
+                        "modified_at": str(comment.modified_at) if hasattr(comment, 'modified_at') else None
+                    }
+                    
+                    # Include attachments if requested
+                    if include_attachments and hasattr(comment, 'attachments') and comment.attachments:
+                        comment_data["attachments"] = []
+                        for attachment in comment.attachments:
+                            attachment_data = {
+                                "attachment_id": str(attachment.id),
+                                "name": attachment.name,
+                                "url": attachment.url if hasattr(attachment, 'url') else None,
+                                "size_bytes": attachment.size_in_kb * 1024 if hasattr(attachment, 'size_in_kb') else None,
+                                "mime_type": attachment.mime_type if hasattr(attachment, 'mime_type') else None,
+                                "created_at": str(attachment.created_at) if hasattr(attachment, 'created_at') else None
+                            }
+                            comment_data["attachments"].append(attachment_data)
+                    
+                    comments_list.append(comment_data)
+            
+            return {
+                "success": True,
+                "discussion_id": discussion_id,
+                "discussion_title": discussion.title if hasattr(discussion, 'title') else None,
+                "comments": comments_list,
+                "total_comments": len(comments_list),
+                "include_attachments": include_attachments
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to get comments: {str(e)}"}
+    
+    def delete_comment(
+        self,
+        sheet_id: str,
+        comment_id: str
+    ) -> Dict[str, Any]:
+        """
+        Delete a specific comment from a discussion.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            comment_id: Comment ID to delete
+        
+        Returns:
+            Dict containing deletion status
+        """
+        try:
+            # Delete the comment
+            result = self.client.Comments.delete_comment(sheet_id, int(comment_id))
+            
+            return {
+                "success": True,
+                "comment_id": comment_id,
+                "message": "Comment deleted successfully"
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to delete comment: {str(e)}"}
+    
+    # Cell History and Audit Tracking Methods
+    def get_cell_history(
+        self,
+        sheet_id: str,
+        row_id: str,
+        column_id: str,
+        include_all: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Get modification history for a specific cell.
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            row_id: Row ID containing the cell
+            column_id: Column ID of the cell
+            include_all: Include all historical data
+        
+        Returns:
+            Dict containing cell history and metadata
+        """
+        try:
+            # Get cell history
+            response = self.client.Cells.get_cell_history(
+                sheet_id,
+                int(row_id),
+                int(column_id),
+                include_all=include_all
+            )
+            
+            if not response or not response.data:
+                return {
+                    "success": True,
+                    "cell_history": [],
+                    "total_count": 0,
+                    "sheet_id": sheet_id,
+                    "row_id": row_id,
+                    "column_id": column_id
+                }
+            
+            history_list = []
+            for cell in response.data:
+                history_entry = {
+                    "value": cell.value if hasattr(cell, 'value') else None,
+                    "display_value": cell.display_value if hasattr(cell, 'display_value') else None,
+                    "modified_at": str(cell.modified_at) if hasattr(cell, 'modified_at') else None,
+                    "modified_by": cell.modified_by.email if hasattr(cell, 'modified_by') and hasattr(cell.modified_by, 'email') else None,
+                    "column_id": str(cell.column_id) if hasattr(cell, 'column_id') else column_id,
+                    "row_id": str(cell.row_id) if hasattr(cell, 'row_id') else row_id
+                }
+                
+                # Add formula information if present
+                if hasattr(cell, 'formula') and cell.formula:
+                    history_entry["formula"] = cell.formula
+                
+                # Add format information if present
+                if hasattr(cell, 'format') and cell.format:
+                    history_entry["format"] = str(cell.format)
+                
+                history_list.append(history_entry)
+            
+            # Sort by modification date (most recent first)
+            history_list.sort(
+                key=lambda x: x['modified_at'] if x['modified_at'] else '',
+                reverse=True
+            )
+            
+            return {
+                "success": True,
+                "cell_history": history_list,
+                "total_count": len(history_list),
+                "sheet_id": sheet_id,
+                "row_id": row_id,
+                "column_id": column_id,
+                "include_all": include_all
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to get cell history: {str(e)}"}
+    
+    def get_row_history(
+        self,
+        sheet_id: str,
+        row_id: str,
+        include_all: bool = True,
+        column_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Get change history for an entire row (all cells or specific columns).
+        
+        Args:
+            sheet_id: Smartsheet sheet ID
+            row_id: Row ID to get history for
+            include_all: Include all historical data
+            column_ids: Specific column IDs to get history for (optional)
+        
+        Returns:
+            Dict containing row history and metadata
+        """
+        try:
+            # First get sheet info to get all columns if none specified
+            if not column_ids:
+                sheet_info = self.get_sheet_info(sheet_id)
+                if 'error' in sheet_info:
+                    return {"error": f"Failed to get sheet info: {sheet_info['error']}"}
+                
+                # Extract all column IDs from the column map
+                column_map = sheet_info.get('column_map', {})
+                column_ids = list(column_map.values())
+            
+            if not column_ids:
+                return {"error": "No columns found for row history"}
+            
+            # Get history for each column in the row
+            row_history = {}
+            total_changes = 0
+            
+            for column_id in column_ids:
+                try:
+                    cell_history_result = self.get_cell_history(
+                        sheet_id,
+                        row_id,
+                        column_id,
+                        include_all
+                    )
+                    
+                    if cell_history_result.get('success') and cell_history_result.get('cell_history'):
+                        row_history[column_id] = cell_history_result['cell_history']
+                        total_changes += len(cell_history_result['cell_history'])
+                    else:
+                        # Empty history for this column
+                        row_history[column_id] = []
+                        
+                except Exception as cell_error:
+                    # Skip columns that can't be accessed (might be system columns)
+                    continue
+            
+            # Create a chronological timeline of all changes
+            timeline = []
+            for column_id, history in row_history.items():
+                for entry in history:
+                    timeline_entry = entry.copy()
+                    timeline_entry['column_id'] = column_id
+                    timeline.append(timeline_entry)
+            
+            # Sort timeline by modification date (most recent first)
+            timeline.sort(
+                key=lambda x: x['modified_at'] if x['modified_at'] else '',
+                reverse=True
+            )
+            
+            return {
+                "success": True,
+                "row_history": row_history,
+                "timeline": timeline,
+                "total_changes": total_changes,
+                "columns_processed": len(row_history),
+                "sheet_id": sheet_id,
+                "row_id": row_id,
+                "include_all": include_all
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to get row history: {str(e)}"}
+    
+    def get_sheet_cross_references(
+        self, 
+        sheet_id: str, 
+        include_details: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Get all cross-sheet references in a sheet
+        
+        Args:
+            sheet_id: Sheet ID to analyze
+            include_details: Include detailed formula analysis
+            
+        Returns:
+            Dict containing cross-sheet references found
+        """
+        try:
+            import re
+            
+            # Get the sheet with all details
+            sheet = self.client.Sheets.get_sheet(sheet_id, include='format,objectValue')
+            
+            cross_references = []
+            total_refs = 0
+            
+            # Pattern to match cross-sheet references in formulas
+            # Smartsheet cross-sheet references look like: {[Sheet Name]Column1}
+            cross_ref_pattern = r'\{(\[[^\]]+\][^}]*)\}'
+            
+            # Analyze each row and column for formulas
+            for row in sheet.rows:
+                for cell in row.cells:
+                    if cell.formula:
+                        # Find cross-sheet references in this formula
+                        matches = re.findall(cross_ref_pattern, cell.formula)
+                        if matches:
+                            # Get column info
+                            column = next((col for col in sheet.columns if col.id == cell.column_id), None)
+                            
+                            for match in matches:
+                                total_refs += 1
+                                ref_info = {
+                                    "row_id": str(row.id),
+                                    "column_id": str(cell.column_id),
+                                    "column_title": column.title if column else "Unknown",
+                                    "reference": match,
+                                    "formula": cell.formula if include_details else None,
+                                    "cell_value": str(cell.value) if cell.value else None
+                                }
+                                
+                                if include_details:
+                                    # Try to parse sheet name from reference
+                                    sheet_name_match = re.search(r'\[([^\]]+)\]', match)
+                                    if sheet_name_match:
+                                        ref_info["referenced_sheet_name"] = sheet_name_match.group(1)
+                                
+                                cross_references.append(ref_info)
+            
+            return {
+                "success": True,
+                "sheet_id": sheet_id,
+                "sheet_name": sheet.name,
+                "total_references": total_refs,
+                "cross_references": cross_references,
+                "include_details": include_details
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to get cross-sheet references: {str(e)}"}
+    
+    def find_sheet_references(
+        self, 
+        target_sheet_id: str, 
+        workspace_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Find all sheets that reference a specific target sheet
+        
+        Args:
+            target_sheet_id: Sheet ID to find references to
+            workspace_id: Optional workspace ID to limit search scope
+            
+        Returns:
+            Dict containing sheets that reference the target sheet
+        """
+        try:
+            # First get the target sheet name for reference pattern matching
+            target_sheet = self.client.Sheets.get_sheet(target_sheet_id)
+            target_sheet_name = target_sheet.name
+            
+            # Get all sheets to search through
+            if workspace_id:
+                # Get sheets from specific workspace
+                workspace = self.client.Workspaces.get_workspace(
+                    int(workspace_id),
+                    include='sheets'
+                )
+                sheets_to_search = [sheet for sheet in workspace.sheets]
+            else:
+                # Get all sheets user has access to
+                all_sheets = self.client.Sheets.list_sheets(include_all=True)
+                sheets_to_search = [sheet for sheet in all_sheets.data]
+            
+            referencing_sheets = []
+            total_refs_found = 0
+            
+            # Search each sheet for references to target sheet
+            for sheet_summary in sheets_to_search:
+                if str(sheet_summary.id) == target_sheet_id:
+                    continue  # Skip the target sheet itself
+                
+                try:
+                    # Get cross-references in this sheet
+                    sheet_refs = self.get_sheet_cross_references(str(sheet_summary.id), include_details=True)
+                    
+                    if sheet_refs.get('success') and sheet_refs.get('cross_references'):
+                        # Check if any references point to our target sheet
+                        matching_refs = []
+                        for ref in sheet_refs['cross_references']:
+                            if ref.get('referenced_sheet_name') == target_sheet_name:
+                                matching_refs.append(ref)
+                                total_refs_found += 1
+                        
+                        if matching_refs:
+                            referencing_sheets.append({
+                                "sheet_id": str(sheet_summary.id),
+                                "sheet_name": sheet_summary.name,
+                                "reference_count": len(matching_refs),
+                                "references": matching_refs,
+                                "permalink": getattr(sheet_summary, 'permalink', None)
+                            })
+                            
+                except Exception as e:
+                    # Skip sheets we can't access
+                    continue
+            
+            return {
+                "success": True,
+                "target_sheet_id": target_sheet_id,
+                "target_sheet_name": target_sheet_name,
+                "workspace_id": workspace_id,
+                "total_referencing_sheets": len(referencing_sheets),
+                "total_references_found": total_refs_found,
+                "referencing_sheets": referencing_sheets
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to find sheet references: {str(e)}"}
+    
+    def validate_cross_references(
+        self, 
+        sheet_id: str, 
+        fix_broken: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Validate all cross-sheet references and check for broken links
+        
+        Args:
+            sheet_id: Sheet ID to validate
+            fix_broken: Attempt to fix broken references automatically
+            
+        Returns:
+            Dict containing validation results and broken reference details
+        """
+        try:
+            # Get all cross-references in the sheet
+            refs_result = self.get_sheet_cross_references(sheet_id, include_details=True)
+            
+            if not refs_result.get('success'):
+                return refs_result
+            
+            cross_references = refs_result.get('cross_references', [])
+            
+            valid_refs = []
+            broken_refs = []
+            fixed_refs = []
+            
+            # Get list of accessible sheets for validation
+            all_sheets = self.client.Sheets.list_sheets(include_all=True)
+            accessible_sheet_names = {sheet.name: str(sheet.id) for sheet in all_sheets.data}
+            
+            for ref in cross_references:
+                referenced_sheet_name = ref.get('referenced_sheet_name')
+                
+                if not referenced_sheet_name:
+                    # Could not parse sheet name from reference
+                    broken_refs.append({
+                        **ref,
+                        "issue": "Cannot parse referenced sheet name from formula",
+                        "fixable": False
+                    })
+                    continue
+                
+                if referenced_sheet_name in accessible_sheet_names:
+                    # Reference appears valid
+                    valid_refs.append({
+                        **ref,
+                        "referenced_sheet_id": accessible_sheet_names[referenced_sheet_name],
+                        "status": "valid"
+                    })
+                else:
+                    # Broken reference - sheet not found or not accessible
+                    broken_ref = {
+                        **ref,
+                        "issue": f"Referenced sheet '{referenced_sheet_name}' not found or not accessible",
+                        "fixable": False,
+                        "status": "broken"
+                    }
+                    
+                    # Check if we can suggest alternatives
+                    similar_sheets = [name for name in accessible_sheet_names.keys() 
+                                    if name.lower().replace(' ', '') in referenced_sheet_name.lower().replace(' ', '') or 
+                                       referenced_sheet_name.lower().replace(' ', '') in name.lower().replace(' ', '')]
+                    
+                    if similar_sheets:
+                        broken_ref["suggested_alternatives"] = similar_sheets
+                        if fix_broken and len(similar_sheets) == 1:
+                            broken_ref["fixable"] = True
+                    
+                    broken_refs.append(broken_ref)
+            
+            # If fix_broken is True, attempt to fix fixable references
+            if fix_broken:
+                # Note: Actual fixing would require updating formulas in cells
+                # This is a complex operation and would need careful implementation
+                # For now, we'll just mark what could be fixed
+                for broken_ref in broken_refs:
+                    if broken_ref.get("fixable"):
+                        broken_ref["fix_attempted"] = True
+                        # In a real implementation, we would update the cell formula here
+                        # fixed_refs.append(broken_ref)
+            
+            return {
+                "success": True,
+                "sheet_id": sheet_id,
+                "sheet_name": refs_result.get('sheet_name'),
+                "total_references": len(cross_references),
+                "valid_references": len(valid_refs),
+                "broken_references": len(broken_refs),
+                "fix_attempted": fix_broken,
+                "references_fixed": len(fixed_refs),
+                "validation_details": {
+                    "valid": valid_refs,
+                    "broken": broken_refs,
+                    "fixed": fixed_refs
+                }
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to validate cross-sheet references: {str(e)}"}
+    
+    def create_cross_reference(
+        self, 
+        sheet_id: str, 
+        target_sheet_id: str, 
+        formula_config: Dict[str, Any], 
+        row_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create or update cross-sheet reference formulas
+        
+        Args:
+            sheet_id: Source sheet ID
+            target_sheet_id: Target sheet ID to reference
+            formula_config: Configuration for the formula
+            row_ids: Specific row IDs to apply formula to
+            
+        Returns:
+            Dict containing operation results
+        """
+        try:
+            import smartsheet.models as models
+            
+            # Get both sheets to validate and get column info
+            source_sheet = self.client.Sheets.get_sheet(sheet_id)
+            target_sheet = self.client.Sheets.get_sheet(target_sheet_id)
+            
+            source_column_id = formula_config['source_column_id']
+            target_column_id = formula_config['target_column_id']
+            formula_type = formula_config['formula_type']
+            lookup_column_id = formula_config.get('lookup_column_id')
+            custom_formula = formula_config.get('custom_formula')
+            
+            # Find column titles for formula building
+            target_column = next((col for col in target_sheet.columns if str(col.id) == target_column_id), None)
+            if not target_column:
+                return {"error": f"Target column {target_column_id} not found in sheet {target_sheet_id}"}
+            
+            lookup_column = None
+            if lookup_column_id:
+                lookup_column = next((col for col in target_sheet.columns if str(col.id) == lookup_column_id), None)
+                if not lookup_column:
+                    return {"error": f"Lookup column {lookup_column_id} not found in sheet {target_sheet_id}"}
+            
+            # Build formula based on type
+            formula_template = ""
+            
+            if formula_type == "INDEX_MATCH":
+                if not lookup_column:
+                    return {"error": "INDEX_MATCH requires lookup_column_id"}
+                formula_template = f'=INDEX({{[{target_sheet.name}]{target_column.title}:Column{target_column.index}}}, MATCH([Column]@row, {{[{target_sheet.name}]{lookup_column.title}:Column{lookup_column.index}}}, 0))'
+            
+            elif formula_type == "VLOOKUP":
+                if not lookup_column:
+                    return {"error": "VLOOKUP requires lookup_column_id"}
+                # Note: VLOOKUP in Smartsheet requires the lookup column to be left of the return column
+                col_offset = target_column.index - lookup_column.index
+                if col_offset <= 0:
+                    return {"error": "VLOOKUP requires target column to be right of lookup column"}
+                formula_template = f'=VLOOKUP([Column]@row, {{[{target_sheet.name}]{lookup_column.title}:Column{target_column.index}}}, {col_offset + 1}, false)'
+            
+            elif formula_type == "SUMIF":
+                if not lookup_column:
+                    return {"error": "SUMIF requires lookup_column_id"}
+                formula_template = f'=SUMIF({{[{target_sheet.name}]{lookup_column.title}:Column{lookup_column.index}}}, [Column]@row, {{[{target_sheet.name}]{target_column.title}:Column{target_column.index}}})'
+            
+            elif formula_type == "COUNTIF":
+                if not lookup_column:
+                    return {"error": "COUNTIF requires lookup_column_id"}
+                formula_template = f'=COUNTIF({{[{target_sheet.name}]{lookup_column.title}:Column{lookup_column.index}}}, [Column]@row)'
+            
+            elif formula_type == "CUSTOM":
+                if not custom_formula:
+                    return {"error": "CUSTOM formula type requires custom_formula"}
+                formula_template = custom_formula
+            
+            else:
+                return {"error": f"Unsupported formula type: {formula_type}"}
+            
+            # Apply formula to specified rows or all rows
+            rows_to_update = []
+            
+            if row_ids:
+                # Apply to specific rows
+                for row_id in row_ids:
+                    row = models.Row()
+                    row.id = int(row_id)
+                    
+                    cell = models.Cell()
+                    cell.column_id = int(source_column_id)
+                    cell.formula = formula_template
+                    row.cells = [cell]
+                    
+                    rows_to_update.append(row)
+            else:
+                # Apply to all rows (get current rows first)
+                for row in source_sheet.rows:
+                    row_update = models.Row()
+                    row_update.id = row.id
+                    
+                    cell = models.Cell()
+                    cell.column_id = int(source_column_id)
+                    cell.formula = formula_template
+                    row_update.cells = [cell]
+                    
+                    rows_to_update.append(row_update)
+            
+            # Update the rows with formulas
+            result = self.client.Sheets.update_rows(sheet_id, rows_to_update)
+            
+            if result and result.result:
+                updated_rows = result.result
+                return {
+                    "success": True,
+                    "sheet_id": sheet_id,
+                    "target_sheet_id": target_sheet_id,
+                    "formula_type": formula_type,
+                    "formula_template": formula_template,
+                    "rows_updated": len(updated_rows),
+                    "updated_row_ids": [str(row.id) for row in updated_rows]
+                }
+            else:
+                return {"error": "Failed to update rows with cross-reference formula"}
+                
+        except Exception as e:
+            return {"error": f"Failed to create cross-reference: {str(e)}"}

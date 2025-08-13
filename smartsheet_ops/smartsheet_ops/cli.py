@@ -21,7 +21,11 @@ def parse_args():
                                'add_column', 'delete_column', 'rename_column', 'bulk_update',
                                'start_analysis', 'cancel_analysis', 'get_job_status',
                                'list_workspaces', 'get_workspace', 'create_workspace',
-                               'create_sheet_in_workspace', 'list_workspace_sheets'], 
+                               'create_sheet_in_workspace', 'list_workspace_sheets',
+                               'upload_attachment', 'get_attachments', 'download_attachment', 'delete_attachment',
+                               'create_discussion', 'add_comment', 'get_discussions', 'get_comments', 'delete_comment',
+                               'get_cell_history', 'get_row_history',
+                               'get_sheet_cross_references', 'find_sheet_references', 'validate_cross_references', 'create_cross_reference'], 
                        help='Operation to perform')
     parser.add_argument('--sheet-id', help='Smartsheet sheet ID')
     parser.add_argument('--workspace-id', help='Smartsheet workspace ID')
@@ -278,6 +282,178 @@ async def main():
             if not args.workspace_id:
                 raise ValueError("--workspace-id is required for list_workspace_sheets operation")
             result = ops.list_workspace_sheets(args.workspace_id)
+            print(json.dumps(result, indent=2))
+        
+        # Attachment operations
+        elif args.operation == 'upload_attachment':
+            if not args.data:
+                raise ValueError("--data is required for upload_attachment operation")
+            data = json.loads(args.data)
+            result = ops.upload_attachment(
+                args.sheet_id,
+                data.get('file_path'),
+                data.get('attachment_type'),
+                data.get('target_id'),
+                data.get('file_name')
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'get_attachments':
+            if not args.data:
+                raise ValueError("--data is required for get_attachments operation")
+            data = json.loads(args.data)
+            result = ops.get_attachments(
+                args.sheet_id,
+                data.get('attachment_type'),
+                data.get('target_id')
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'download_attachment':
+            if not args.data:
+                raise ValueError("--data is required for download_attachment operation")
+            data = json.loads(args.data)
+            result = ops.download_attachment(
+                args.sheet_id,
+                data.get('attachment_id'),
+                data.get('save_path')
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'delete_attachment':
+            if not args.data:
+                raise ValueError("--data is required for delete_attachment operation")
+            data = json.loads(args.data)
+            result = ops.delete_attachment(
+                args.sheet_id,
+                data.get('attachment_id')
+            )
+            print(json.dumps(result, indent=2))
+        
+        # Discussion operations
+        elif args.operation == 'create_discussion':
+            if not args.data:
+                raise ValueError("--data is required for create_discussion operation")
+            data = json.loads(args.data)
+            result = ops.create_discussion(
+                args.sheet_id,
+                data.get('discussion_type'),
+                data.get('comment_text'),
+                data.get('target_id'),
+                data.get('title')
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'add_comment':
+            if not args.data:
+                raise ValueError("--data is required for add_comment operation")
+            data = json.loads(args.data)
+            result = ops.add_comment(
+                args.sheet_id,
+                data.get('discussion_id'),
+                data.get('comment_text')
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'get_discussions':
+            if not args.data:
+                raise ValueError("--data is required for get_discussions operation")
+            data = json.loads(args.data)
+            result = ops.get_discussions(
+                args.sheet_id,
+                data.get('discussion_type'),
+                data.get('target_id'),
+                data.get('include_comments', False)
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'get_comments':
+            if not args.data:
+                raise ValueError("--data is required for get_comments operation")
+            data = json.loads(args.data)
+            result = ops.get_comments(
+                args.sheet_id,
+                data.get('discussion_id'),
+                data.get('include_attachments', True)
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'delete_comment':
+            if not args.data:
+                raise ValueError("--data is required for delete_comment operation")
+            data = json.loads(args.data)
+            result = ops.delete_comment(
+                args.sheet_id,
+                data.get('comment_id')
+            )
+            print(json.dumps(result, indent=2))
+        
+        # Cell history operations
+        elif args.operation == 'get_cell_history':
+            if not args.data:
+                raise ValueError("--data is required for get_cell_history operation")
+            data = json.loads(args.data)
+            result = ops.get_cell_history(
+                args.sheet_id,
+                data.get('row_id'),
+                data.get('column_id'),
+                data.get('include_all', True)
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'get_row_history':
+            if not args.data:
+                raise ValueError("--data is required for get_row_history operation")
+            data = json.loads(args.data)
+            result = ops.get_row_history(
+                args.sheet_id,
+                data.get('row_id'),
+                data.get('include_all', True),
+                data.get('column_ids')
+            )
+            print(json.dumps(result, indent=2))
+        
+        # Cross-sheet reference operations
+        elif args.operation == 'get_sheet_cross_references':
+            if not args.data:
+                raise ValueError("--data is required for get_sheet_cross_references operation")
+            data = json.loads(args.data)
+            result = ops.get_sheet_cross_references(
+                args.sheet_id,
+                data.get('include_details', True)
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'find_sheet_references':
+            if not args.data:
+                raise ValueError("--data is required for find_sheet_references operation")
+            data = json.loads(args.data)
+            result = ops.find_sheet_references(
+                data.get('target_sheet_id'),
+                data.get('workspace_id')
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'validate_cross_references':
+            if not args.data:
+                raise ValueError("--data is required for validate_cross_references operation")
+            data = json.loads(args.data)
+            result = ops.validate_cross_references(
+                args.sheet_id,
+                data.get('fix_broken', False)
+            )
+            print(json.dumps(result, indent=2))
+            
+        elif args.operation == 'create_cross_reference':
+            if not args.data:
+                raise ValueError("--data is required for create_cross_reference operation")
+            data = json.loads(args.data)
+            result = ops.create_cross_reference(
+                args.sheet_id,
+                data.get('target_sheet_id'),
+                data.get('formula_config'),
+                data.get('row_ids')
+            )
             print(json.dumps(result, indent=2))
         
     except Exception as e:

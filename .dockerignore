@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+smartsheet_ops/smartsheet_ops.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Development files
+.git/
+.github/
+tests/
+coverage/
+.coverage
+.nyc_output
+*.log
+.env
+.env.local
+
+# Build artifacts (will be copied from builder stage)
+build/
+dist/
+*.tgz
+
+# Documentation
+*.md
+docs/
+RECOMMENDATIONS.md
+CLAUDE.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test_*.py
+*_test.py
+*.test.ts
+*.spec.ts
+
+# Temporary files
+tmp/
+temp/

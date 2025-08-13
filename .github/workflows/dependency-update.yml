@@ -1,0 +1,152 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  update-dependencies:
+    name: Update Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Check for Node.js updates
+      run: |
+        # Check for outdated packages
+        npm outdated --json > outdated.json || true
+        
+        # Update package-lock.json
+        npm update
+        
+        # Show what changed
+        git diff package-lock.json || echo "No package-lock.json changes"
+        
+    - name: Check for Python updates
+      run: |
+        cd smartsheet_ops
+        
+        # Install pip-tools for dependency management
+        pip install pip-tools
+        
+        # Check for outdated packages
+        pip list --outdated --format=json > ../python-outdated.json || true
+        
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update dependencies'
+        title: 'chore: automated dependency updates'
+        body: |
+          ## Automated Dependency Updates
+          
+          This PR contains automated dependency updates.
+          
+          ### Node.js Dependencies
+          - Updated package-lock.json with latest compatible versions
+          
+          ### Review Required
+          - [ ] Check that all tests pass
+          - [ ] Verify no breaking changes in updated packages
+          - [ ] Review security advisories for updated packages
+          
+          ---
+          
+          Created by GitHub Actions workflow.
+        branch: chore/dependency-updates
+        delete-branch: true
+        
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd smartsheet_ops
+        pip install -e .
+        pip install safety
+        
+    - name: Run npm audit
+      run: |
+        npm audit --audit-level moderate --json > npm-audit.json || true
+        
+    - name: Run Python security audit
+      run: |
+        cd smartsheet_ops
+        safety check --json > ../python-safety.json || true
+        
+    - name: Create security issue
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let body = '## Security Vulnerabilities Detected\n\n';
+          
+          // Check npm audit results
+          try {
+            const npmAudit = JSON.parse(fs.readFileSync('npm-audit.json', 'utf8'));
+            if (npmAudit.vulnerabilities && Object.keys(npmAudit.vulnerabilities).length > 0) {
+              body += '### Node.js Dependencies\n\n';
+              body += '```json\n' + JSON.stringify(npmAudit.vulnerabilities, null, 2) + '\n```\n\n';
+            }
+          } catch (e) {
+            console.log('No npm audit issues found');
+          }
+          
+          // Check Python safety results
+          try {
+            const pythonSafety = JSON.parse(fs.readFileSync('python-safety.json', 'utf8'));
+            if (pythonSafety.length > 0) {
+              body += '### Python Dependencies\n\n';
+              body += '```json\n' + JSON.stringify(pythonSafety, null, 2) + '\n```\n\n';
+            }
+          } catch (e) {
+            console.log('No Python safety issues found');
+          }
+          
+          body += '**Action Required:** Please review and address these security vulnerabilities.\n\n';
+          body += 'Created by automated security audit workflow.';
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: '🚨 Security Vulnerabilities Detected',
+            body: body,
+            labels: ['security', 'bug', 'priority-high']
+          });

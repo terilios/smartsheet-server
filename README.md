@@ -1,5 +1,12 @@
 # Smartsheet MCP Server
 
+<!-- Coverage and Status Badges -->
+[![Codecov Coverage](https://codecov.io/gh/terilios/smartsheet-server/branch/main/graph/badge.svg)](https://codecov.io/gh/terilios/smartsheet-server) [![CI/CD Pipeline](https://github.com/terilios/smartsheet-server/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/terilios/smartsheet-server/actions) [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE) [![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-blue.svg?style=flat-square)](https://github.com/terilios/smartsheet-server/releases)
+
+[![Node.js Versions](https://img.shields.io/badge/Node.js-16%20%7C%2018%20%7C%2020-green.svg?style=flat-square&logo=node.js&logoColor=white)](package.json) [![Python Versions](https://img.shields.io/badge/Python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11-blue.svg?style=flat-square&logo=python&logoColor=white)](smartsheet_ops/setup.py)
+
+<!-- End Coverage and Status Badges -->
+
 A Model Context Protocol (MCP) server that provides seamless integration with Smartsheet, enabling automated operations on Smartsheet documents through a standardized interface. This server bridges the gap between AI-powered automation tools and Smartsheet's powerful collaboration platform.
 
 ## Overview
@@ -71,7 +78,7 @@ The server integrates with:
 
 ## Features
 
-### Tools (19 Available)
+### Tools (34 Available)
 
 1. `get_column_map` (Read)
 
@@ -246,6 +253,80 @@ The server integrates with:
     - Includes creation and modification timestamps
     - Supports workspace content discovery
 
+20. `smartsheet_upload_attachment` (Attachment Management)
+    - Upload files to sheets, rows, or comments
+    - Supports multiple attachment types and file size validation
+    - Returns attachment metadata and upload status
+
+21. `smartsheet_get_attachments` (Attachment Management)
+    - List all attachments for sheet or row
+    - Returns comprehensive attachment metadata
+    - Includes file URLs, sizes, and creator information
+
+22. `smartsheet_download_attachment` (Attachment Management)
+    - Download specific attachments to local filesystem
+    - Creates directories as needed and verifies downloads
+    - Returns download status and file information
+
+23. `smartsheet_delete_attachment` (Attachment Management)
+    - Remove attachments from sheets
+    - Validates permissions and returns deletion status
+
+24. `smartsheet_create_discussion` (Discussion Management)
+    - Create new discussion threads on sheets or rows
+    - Supports initial comments and optional titles
+    - Returns discussion metadata and creation status
+
+25. `smartsheet_add_comment` (Discussion Management)
+    - Add comments to existing discussions
+    - Maintains threaded conversation structure
+    - Returns comment details and timestamps
+
+26. `smartsheet_get_discussions` (Discussion Management)
+    - List all discussions for sheets or rows
+    - Optional inclusion of all comments in response
+    - Returns discussion metadata and participant information
+
+27. `smartsheet_get_comments` (Discussion Management)
+    - Get all comments in a specific discussion thread
+    - Includes attachment information if present
+    - Returns chronological comment history
+
+28. `smartsheet_delete_comment` (Discussion Management)
+    - Delete specific comments from discussions
+    - Validates permissions before deletion
+    - Returns deletion confirmation
+
+29. `smartsheet_get_cell_history` (Cell History & Audit)
+    - Get modification history for individual cells
+    - Includes user attribution and timestamps
+    - Tracks value changes, formulas, and formatting
+
+30. `smartsheet_get_row_history` (Cell History & Audit)
+    - Get change history for entire rows
+    - Provides chronological timeline of all cell changes
+    - Supports specific column filtering and complete audit trails
+
+31. `smartsheet_get_sheet_cross_references` (Cross-Sheet References)
+    - Analyze all cross-sheet references within a sheet
+    - Identify formulas that reference other sheets
+    - Detailed analysis of formula patterns and dependencies
+
+32. `smartsheet_find_sheet_references` (Cross-Sheet References)
+    - Find all sheets that reference a specific target sheet
+    - Search across workspace or entire accessible sheets
+    - Comprehensive reference mapping and impact analysis
+
+33. `smartsheet_validate_cross_references` (Cross-Sheet References)
+    - Validate all cross-sheet references for broken links
+    - Identify inaccessible or deleted referenced sheets
+    - Suggest alternative sheets for broken references
+
+34. `smartsheet_create_cross_reference` (Cross-Sheet References)
+    - Create INDEX_MATCH, VLOOKUP, SUMIF, COUNTIF formulas
+    - Build cross-sheet reference formulas programmatically
+    - Support for custom formula templates and multiple formula types
+
 ### Resources (4 Static + 5 Dynamic Templates)
 
 The server provides both static resources and dynamic resource templates for enhanced data access and contextual information.
@@ -412,6 +493,14 @@ Intelligent prompt templates that provide guided assistance for common Smartshee
   - Error reporting and logging
   - Job cancellation support
   - Batch operation controls
+
+- **Cross-Sheet References**
+  - Formula analysis and dependency mapping
+  - Cross-sheet reference detection and validation
+  - Broken link identification and repair suggestions
+  - Automated formula generation (INDEX_MATCH, VLOOKUP, SUMIF, COUNTIF)
+  - Reference impact analysis across workspaces
+  - Custom formula template support
 
 ## Setup
 
@@ -1045,6 +1134,162 @@ For development with auto-rebuild:
 
 ```bash
 npm run watch
+```
+
+### CI/CD Pipeline
+
+This project implements a comprehensive 8-stage CI/CD pipeline with GitHub Actions, ensuring code quality, security, and reliability across all components.
+
+#### Pipeline Architecture
+
+The CI/CD pipeline consists of 8 coordinated jobs that run in parallel and sequence for optimal efficiency:
+
+1. **TypeScript Quality Checks** - ESLint, type checking, formatting validation
+2. **Python Quality Checks** - Black, Flake8, MyPy type checking
+3. **TypeScript Testing** - Matrix testing on Node.js 16, 18, 20 with coverage
+4. **Python Testing** - Matrix testing on Python 3.8, 3.9, 3.10, 3.11 with coverage
+5. **Combined Coverage** - Unified coverage reporting and Codecov integration
+6. **Integration Testing** - End-to-end validation and MCP server startup verification
+7. **Security Scanning** - npm audit, Python safety, Bandit security analysis
+8. **Build and Package** - Artifact creation and deployment verification
+
+#### Key Pipeline Features
+
+**Quality Assurance**:
+- **Multi-language Support**: Full TypeScript and Python pipeline coverage
+- **Matrix Testing**: Cross-platform compatibility verification
+- **Code Quality Gates**: ESLint, Black, Flake8, MyPy, TypeScript strict mode
+- **Coverage Enforcement**: Automated coverage threshold validation
+- **Security Scanning**: Regular vulnerability assessment with safety and Bandit
+
+**Performance Optimization**:
+- **Parallel Execution**: Independent jobs run concurrently for faster feedback
+- **Intelligent Caching**: Node modules and Python dependencies cached across runs
+- **Conditional Execution**: Performance tests only on PRs, full coverage on main
+- **Artifact Management**: Build artifacts preserved for 7-30 days
+
+**Integration and Deployment**:
+- **MCP Protocol Validation**: Server startup and protocol compliance testing
+- **Docker Support**: Multi-platform container builds (linux/amd64, linux/arm64)
+- **Automated Releases**: Version-tagged releases with changelog generation
+- **Dependency Management**: Weekly security audits and update automation
+
+#### Workflow Triggers
+
+```yaml
+# Comprehensive testing on main branches
+- push: [main, develop]
+- pull_request: [main, develop]
+
+# Additional workflows
+- release: version tags (v*.*.*)
+- security: weekly dependency scans
+- performance: PR-specific testing
+```
+
+#### Status Monitoring
+
+[![CI Pipeline](https://github.com/terilios/smartsheet-server/actions/workflows/ci.yml/badge.svg)](https://github.com/terilios/smartsheet-server/actions/workflows/ci.yml)
+[![Security Scan](https://github.com/terilios/smartsheet-server/actions/workflows/dependency-update.yml/badge.svg)](https://github.com/terilios/smartsheet-server/actions/workflows/dependency-update.yml)
+[![Codecov Coverage](https://codecov.io/gh/terilios/smartsheet-server/branch/main/graph/badge.svg)](https://codecov.io/gh/terilios/smartsheet-server)
+
+The pipeline provides comprehensive notifications and artifact management, ensuring all stakeholders have visibility into build status, test results, and deployment readiness.
+
+### Testing and Quality Assurance
+
+This project maintains comprehensive test coverage and quality assurance across both TypeScript and Python components with automated CI/CD pipelines.
+
+#### Test Infrastructure
+
+**Test Status**: 54/54 TypeScript tests passing, 5/5 Python tests passing
+
+Our comprehensive testing strategy includes:
+
+- **Unit Tests**: Jest for TypeScript (54 tests), pytest for Python (5 core tests)
+- **Integration Tests**: Cross-component testing and MCP protocol validation
+- **Code Quality**: ESLint, TypeScript checking, Black, Flake8, MyPy
+- **Security Scanning**: npm audit, Python safety checks, Bandit analysis
+- **Coverage Analysis**: Combined coverage reporting with Codecov integration
+- **Performance Testing**: Startup time measurement and benchmark tracking
+
+#### Test Coverage Overview
+
+Current coverage metrics:
+- **TypeScript Coverage**: Comprehensive coverage of MCP server implementation
+- **Python Coverage**: Core operations and CLI functionality
+- **Combined Reporting**: Unified coverage analysis across both languages
+- **Automated Tracking**: Real-time coverage monitoring via Codecov
+
+#### Quick Testing Commands
+
+```bash
+# Essential testing commands for daily development
+npm run ci:check          # Pre-commit validation (recommended before push)
+npm run test:all          # Run all tests with coverage
+npm run coverage          # Full coverage analysis with combined reporting
+npm run coverage:open     # View coverage reports in browser
+
+# Individual test suites
+npm test                  # TypeScript tests only
+npm run test:python       # Python tests only
+npm run test:coverage     # TypeScript with coverage
+npm run test:python:coverage  # Python with coverage
+
+# Development testing
+npm run test:watch        # Watch mode for continuous testing
+npm run coverage:clean    # Coverage without external uploads
+```
+
+#### Comprehensive Testing Commands
+
+```bash
+# Quality assurance
+npm run lint              # ESLint for TypeScript
+npm run lint:fix          # Auto-fix linting issues
+npm run format            # Prettier code formatting
+npm run typecheck         # TypeScript type validation
+
+# Coverage and reporting  
+npm run badges:update     # Generate coverage badges
+npm run coverage:ci       # CI-optimized coverage reporting
+npm run coverage:view     # Open all coverage reports
+npm run coverage:combined # View combined coverage report
+
+# Build and validation
+npm run build             # Build TypeScript
+npm run watch             # Development build with watch
+npm run inspector         # MCP inspector for tool testing
+```
+
+#### Test Reports and Artifacts
+
+After running tests, detailed reports are available:
+
+- **TypeScript Coverage**: `./coverage/index.html`
+- **Python Coverage**: `./smartsheet_ops/coverage/index.html`  
+- **Combined Coverage**: `./coverage-combined/index.html`
+- **Test Artifacts**: Available in CI/CD pipeline runs
+
+#### Quality Thresholds
+
+The project enforces strict quality standards:
+
+- **TypeScript Coverage**: 60% minimum (configurable per component)
+- **Python Coverage**: 80% overall with line-by-line reporting
+- **Code Quality**: ESLint rules, TypeScript strict mode, Python Black/Flake8
+- **Security**: Regular dependency audits and vulnerability scanning
+- **Performance**: Startup time monitoring and regression detection
+
+#### Docker Support
+
+Build and run the containerized version:
+
+```bash
+# Build Docker image
+docker build -t smartsheet-server .
+
+# Run with environment variables
+docker run -e SMARTSHEET_API_KEY=your_key -e PYTHON_PATH=/usr/local/bin/python smartsheet-server
 ```
 
 ### Debugging

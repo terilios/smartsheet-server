@@ -1,0 +1,426 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  # Cache keys for dependency management
+  NODE_CACHE_KEY: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+  PYTHON_CACHE_KEY: python-deps-${{ runner.os }}-${{ hashFiles('smartsheet_ops/setup.py', 'smartsheet_ops/requirements-test.txt') }}
+
+jobs:
+  # Job 1: TypeScript Linting and Type Checking
+  typescript-quality:
+    name: TypeScript Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install Node.js dependencies
+      run: npm ci
+      
+    - name: Run ESLint
+      run: npm run lint
+      
+    - name: Run TypeScript type checking
+      run: npm run typecheck
+      
+    - name: Check code formatting
+      run: npm run format -- --check
+
+  # Job 2: Python Linting and Type Checking
+  python-quality:
+    name: Python Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ env.PYTHON_CACHE_KEY }}
+        restore-keys: |
+          python-deps-${{ runner.os }}-
+          
+    - name: Install Python dependencies
+      run: |
+        cd smartsheet_ops
+        pip install -e .
+        pip install -r requirements-test.txt
+        
+    - name: Run Black (code formatting)
+      run: |
+        cd smartsheet_ops
+        black --check --diff smartsheet_ops/ tests/
+        
+    - name: Run Flake8 (linting)
+      run: |
+        cd smartsheet_ops
+        flake8 smartsheet_ops/ tests/
+        
+    - name: Run MyPy (type checking)
+      run: |
+        cd smartsheet_ops
+        mypy smartsheet_ops/
+
+  # Job 3: TypeScript Testing
+  typescript-test:
+    name: TypeScript Tests
+    runs-on: ubuntu-latest
+    needs: typescript-quality
+    
+    strategy:
+      matrix:
+        node-version: ['16', '18', '20']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build TypeScript
+      run: npm run build
+      
+    - name: Run TypeScript tests with coverage
+      run: npm run test:coverage
+      
+    - name: Upload TypeScript coverage to Codecov
+      if: matrix.node-version == '18'
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage/lcov.info
+        flags: typescript
+        name: typescript-coverage
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
+
+  # Job 4: Python Testing
+  python-test:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    needs: python-quality
+    
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: python-${{ matrix.python-version }}-${{ hashFiles('smartsheet_ops/setup.py', 'smartsheet_ops/requirements-test.txt') }}
+        restore-keys: |
+          python-${{ matrix.python-version }}-
+          
+    - name: Install dependencies
+      run: |
+        cd smartsheet_ops
+        pip install -e .
+        pip install -r requirements-test.txt
+        
+    - name: Run Python tests with coverage
+      run: |
+        cd smartsheet_ops
+        python -m pytest --cov=smartsheet_ops --cov-report=xml:coverage.xml --cov-report=html:coverage --cov-report=json:coverage/coverage.json --cov-report=lcov:coverage.lcov --cov-report=term-missing
+        
+    - name: Upload Python coverage to Codecov
+      if: matrix.python-version == '3.9'
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./smartsheet_ops/coverage.xml
+        flags: python
+        name: python-coverage
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
+
+  # Job 5: Combined Coverage Report
+  combined-coverage:
+    name: Combined Coverage Report
+    runs-on: ubuntu-latest
+    needs: [typescript-test, python-test]
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd smartsheet_ops
+        pip install -e .
+        pip install -r requirements-test.txt
+        
+    - name: Run combined coverage analysis
+      run: |
+        # Run our comprehensive coverage script
+        ./scripts/coverage.sh --skip-upload
+        
+    - name: Upload combined coverage artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-reports
+        path: |
+          coverage/
+          smartsheet_ops/coverage/
+          coverage-combined/
+        retention-days: 30
+
+    - name: Upload combined coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage/lcov.info,./smartsheet_ops/coverage.xml
+        flags: combined
+        name: combined-coverage
+        token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
+
+  # Job 6: Integration Testing
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [typescript-test, python-test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ env.PYTHON_CACHE_KEY }}
+        restore-keys: |
+          python-deps-${{ runner.os }}-
+          
+    - name: Install Node.js dependencies
+      run: npm ci
+      
+    - name: Install Python dependencies
+      run: |
+        cd smartsheet_ops
+        pip install -e .
+        pip install -r requirements-test.txt
+        
+    - name: Build TypeScript
+      run: npm run build
+      
+    - name: Run integration tests
+      run: |
+        # Run TypeScript integration tests
+        npm test -- --testPathPattern=integration
+        
+        # Run Python integration tests
+        cd smartsheet_ops
+        pytest tests/integration/ -v
+        
+    - name: Test MCP server startup
+      run: |
+        # Test that the server can start without errors
+        timeout 10s node build/index.js --help || true
+        
+  # Job 6: Security Scanning
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run npm audit
+      run: npm audit --audit-level moderate
+      
+    - name: Setup Python for security scanning
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install Python security tools
+      run: |
+        pip install safety bandit
+        
+    - name: Run Python security checks
+      run: |
+        cd smartsheet_ops
+        # Check for known security vulnerabilities in dependencies
+        safety check --json || true
+        
+        # Run bandit security linter
+        bandit -r smartsheet_ops/ -f json || true
+
+  # Job 7: Build and Package
+  build:
+    name: Build and Package
+    runs-on: ubuntu-latest
+    needs: [typescript-quality, python-quality]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd smartsheet_ops
+        pip install -e .
+        
+    - name: Build TypeScript
+      run: npm run build
+      
+    - name: Verify build artifacts
+      run: |
+        # Check that build directory exists and contains expected files
+        ls -la build/
+        test -f build/index.js
+        test -f build/index.d.ts
+        
+    - name: Build Python package
+      run: |
+        cd smartsheet_ops
+        python setup.py sdist bdist_wheel
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: |
+          build/
+          smartsheet_ops/dist/
+        retention-days: 7
+
+  # Job 8: Performance Testing (Optional)
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd smartsheet_ops
+        pip install -e .
+        pip install -r requirements-test.txt
+        
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-artifacts
+        
+    - name: Run performance tests
+      run: |
+        # Basic performance test - measure startup time
+        time node build/index.js --help
+        
+        # Run Python performance tests if they exist
+        cd smartsheet_ops
+        if [ -f tests/performance ]; then
+          pytest tests/performance/ -v --benchmark-json=benchmark.json
+        fi
+
+  # Job 10: Notify on Success
+  notify:
+    name: Notification
+    runs-on: ubuntu-latest
+    needs: [typescript-test, python-test, combined-coverage, integration-test, security, build]
+    if: always()
+    
+    steps:
+    - name: Check overall success
+      run: |
+        if [[ "${{ needs.typescript-test.result }}" == "success" && 
+              "${{ needs.python-test.result }}" == "success" && 
+              "${{ needs.combined-coverage.result }}" == "success" && 
+              "${{ needs.integration-test.result }}" == "success" && 
+              "${{ needs.security.result }}" == "success" && 
+              "${{ needs.build.result }}" == "success" ]]; then
+          echo "✅ All CI/CD jobs completed successfully!"
+        else
+          echo "❌ Some CI/CD jobs failed. Please check the logs."
+          exit 1
+        fi

@@ -1,0 +1,169 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly on Mondays at 6 AM UTC
+    - cron: '0 6 * * 1'
+
+jobs:
+  quality-metrics:
+    name: Code Quality Metrics
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history for better analysis
+        fetch-depth: 0
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd smartsheet_ops
+        pip install -e .
+        pip install -r requirements-test.txt
+        
+    - name: Run TypeScript quality analysis
+      run: |
+        # Run tests with coverage
+        npm run test:coverage
+        
+        # Generate complexity report if tool is available
+        if npm list --depth=0 | grep -q complexity-report; then
+          npx cr --format json --output complexity.json src/
+        fi
+        
+        # Count lines of code
+        echo "TypeScript LOC:" >> quality-report.txt
+        find src/ -name "*.ts" | xargs wc -l | tail -n 1 >> quality-report.txt
+        
+    - name: Run Python quality analysis
+      run: |
+        cd smartsheet_ops
+        
+        # Run tests with coverage
+        pytest --cov=smartsheet_ops --cov-report=json --cov-report=term
+        
+        # Generate complexity report
+        pip install radon || true
+        if command -v radon >/dev/null 2>&1; then
+          radon cc smartsheet_ops/ -j > ../python-complexity.json || true
+          radon mi smartsheet_ops/ -j > ../python-maintainability.json || true
+        fi
+        
+        # Count lines of code
+        echo "Python LOC:" >> ../quality-report.txt
+        find smartsheet_ops/ -name "*.py" | xargs wc -l | tail -n 1 >> ../quality-report.txt
+        
+    - name: Analyze test coverage
+      run: |
+        echo "=== Test Coverage Report ===" >> quality-report.txt
+        
+        # TypeScript coverage
+        if [ -f coverage/coverage-summary.json ]; then
+          echo "TypeScript Coverage:" >> quality-report.txt
+          node -e "
+            const coverage = require('./coverage/coverage-summary.json');
+            const total = coverage.total;
+            console.log(\`Lines: \${total.lines.pct}%\`);
+            console.log(\`Branches: \${total.branches.pct}%\`);
+            console.log(\`Functions: \${total.functions.pct}%\`);
+            console.log(\`Statements: \${total.statements.pct}%\`);
+          " >> quality-report.txt
+        fi
+        
+        # Python coverage
+        if [ -f smartsheet_ops/coverage.json ]; then
+          echo "Python Coverage:" >> quality-report.txt
+          cd smartsheet_ops
+          python -c "
+import json
+with open('coverage.json') as f:
+    data = json.load(f)
+    total = data.get('totals', {})
+    if 'percent_covered' in total:
+        print(f'Overall: {total[\"percent_covered\"]:.1f}%')
+    else:
+        print('Coverage data not available')
+          " >> ../quality-report.txt
+        fi
+        
+    - name: Check code maintainability
+      run: |
+        echo "=== Maintainability Metrics ===" >> quality-report.txt
+        
+        # Count TODO/FIXME comments
+        echo "Technical debt markers:" >> quality-report.txt
+        echo "TODOs: $(grep -r "TODO" src/ smartsheet_ops/smartsheet_ops/ 2>/dev/null | wc -l)" >> quality-report.txt
+        echo "FIXMEs: $(grep -r "FIXME" src/ smartsheet_ops/smartsheet_ops/ 2>/dev/null | wc -l)" >> quality-report.txt
+        echo "XXXs: $(grep -r "XXX" src/ smartsheet_ops/smartsheet_ops/ 2>/dev/null | wc -l)" >> quality-report.txt
+        
+        # File count metrics
+        echo "File metrics:" >> quality-report.txt
+        echo "TypeScript files: $(find src/ -name "*.ts" | wc -l)" >> quality-report.txt
+        echo "Python files: $(find smartsheet_ops/smartsheet_ops/ -name "*.py" | wc -l)" >> quality-report.txt
+        echo "Test files: $(find . -name "*.test.*" -o -name "test_*.py" | wc -l)" >> quality-report.txt
+        
+    - name: Generate quality summary
+      run: |
+        echo "=== Quality Summary ===" >> quality-report.txt
+        echo "Generated on: $(date)" >> quality-report.txt
+        echo "Commit: ${{ github.sha }}" >> quality-report.txt
+        echo "Branch: ${{ github.ref_name }}" >> quality-report.txt
+        
+        # Display the report
+        cat quality-report.txt
+        
+    - name: Upload quality artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: quality-metrics-${{ github.run_number }}
+        path: |
+          quality-report.txt
+          complexity.json
+          python-complexity.json
+          python-maintainability.json
+          coverage/
+          smartsheet_ops/coverage.json
+        retention-days: 30
+        
+    - name: Comment on PR with quality metrics
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          if (fs.existsSync('quality-report.txt')) {
+            const report = fs.readFileSync('quality-report.txt', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Code Quality Report 📊
+              
+\`\`\`
+${report}
+\`\`\`
+
+Quality metrics have been uploaded as build artifacts for detailed analysis.
+              `
+            });
+          }

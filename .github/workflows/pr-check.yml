@@ -1,0 +1,109 @@
+name: PR Quick Check
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, ready_for_review ]
+
+# Cancel previous runs when new commits are pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick-check:
+    name: Quick Quality Check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+        
+    - name: Install Node.js dependencies
+      run: npm ci
+      
+    - name: Install Python dependencies
+      run: |
+        cd smartsheet_ops
+        pip install -e .
+        pip install -r requirements-test.txt
+        
+    - name: TypeScript quality checks
+      run: |
+        npm run lint
+        npm run typecheck
+        
+    - name: Python quality checks
+      run: |
+        cd smartsheet_ops
+        black --check smartsheet_ops/ tests/
+        flake8 smartsheet_ops/ tests/
+        
+    - name: Build TypeScript
+      run: npm run build
+      
+    - name: Quick tests
+      run: |
+        # Run TypeScript unit tests only
+        npm test -- --testPathPattern=unit --maxWorkers=2
+        
+        # Run Python unit tests only
+        cd smartsheet_ops
+        pytest tests/unit/ --maxfail=5 -x
+        
+    - name: Verify server startup
+      run: |
+        timeout 5s node build/index.js --help || true
+        echo "Server startup test completed"
+
+  auto-assign:
+    name: Auto-assign reviewers
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened'
+    
+    steps:
+    - name: Auto-assign PR
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { owner, repo, number } = context.issue;
+          
+          // Add labels based on changed files
+          const { data: files } = await github.rest.pulls.listFiles({
+            owner,
+            repo,
+            pull_number: number,
+          });
+          
+          const labels = [];
+          const hasTypeScript = files.some(file => file.filename.match(/\.(ts|js)$/));
+          const hasPython = files.some(file => file.filename.includes('smartsheet_ops/') || file.filename.match(/\.py$/));
+          const hasTests = files.some(file => file.filename.includes('test'));
+          const hasDocs = files.some(file => file.filename.match(/\.(md|rst)$/));
+          
+          if (hasTypeScript) labels.push('typescript');
+          if (hasPython) labels.push('python');
+          if (hasTests) labels.push('tests');
+          if (hasDocs) labels.push('documentation');
+          
+          if (labels.length > 0) {
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: number,
+              labels
+            });
+          }

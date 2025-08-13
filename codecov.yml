@@ -1,0 +1,91 @@
+# Codecov configuration for Smartsheet MCP Server
+# https://docs.codecov.com/docs/codecovyml-reference
+
+coverage:
+  # Global coverage settings
+  precision: 2
+  round: down
+  range: "70...100"
+
+  # Coverage targets and thresholds
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 1%
+        base: auto
+      typescript:
+        target: 80%
+        threshold: 1%
+        flags:
+          - typescript
+        paths:
+          - src/
+      python:
+        target: 80%
+        threshold: 1%
+        flags:
+          - python
+        paths:
+          - smartsheet_ops/
+
+    patch:
+      default:
+        target: 70%
+        threshold: 1%
+
+  # Flag configuration for different components
+  flags:
+    typescript:
+      paths:
+        - src/
+        - tests/
+      carryforward: false
+    python:
+      paths:
+        - smartsheet_ops/
+      carryforward: false
+
+# Comment configuration
+comment:
+  layout: "header, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  branches:
+    - main
+    - develop
+
+# Ignore paths that shouldn't affect coverage
+ignore:
+  - "build/"
+  - "coverage/"
+  - "coverage-combined/"
+  - "node_modules/"
+  - "**/*.d.ts"
+  - "**/test_*.py"
+  - "tests/"
+  - "smartsheet_ops/tests/"
+  - "smartsheet_ops/__pycache__/"
+  - "smartsheet_ops/*.egg-info/"
+  - "scripts/"
+  - "*.md"
+  - "*.yml"
+  - "*.yaml"
+  - "*.json"
+  - "Dockerfile"
+  - "LICENSE"
+
+# Parsing configuration
+parsers:
+  gcov:
+    branch_detection:
+      conditional: yes
+      loop: yes
+      method: no
+      macro: no
+
+# GitHub integration
+github_checks:
+  annotations: true

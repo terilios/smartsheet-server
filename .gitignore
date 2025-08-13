@@ -51,3 +51,14 @@ test_*.py
 README.pdf
 bootstrap.md
 resource-plan.md
+
+# Coverage reports
+coverage/
+smartsheet_ops/coverage/
+coverage-combined/
+.coverage
+.coverage.*
+htmlcov/
+.nyc_output/
+coverage-summary.json
+*.lcov

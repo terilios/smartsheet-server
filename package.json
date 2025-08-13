@@ -1,6 +1,6 @@
 {
   "name": "@terilios/smartsheet-server",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "A Model Context Protocol server",
   "author": "Timothy Driscoll",
   "license": "MIT",
@@ -25,10 +25,30 @@
     "build"
   ],
   "scripts": {
-    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "build": "tsc --project tsconfig.build.json && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
     "prepare": "npm run build",
     "watch": "tsc --watch",
-    "inspector": "npx @modelcontextprotocol/inspector build/index.js"
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:python": "cd smartsheet_ops && python -m pytest",
+    "test:python:coverage": "cd smartsheet_ops && python -m pytest --cov=smartsheet_ops --cov-report=html:coverage --cov-report=json:coverage/coverage.json --cov-report=xml:coverage.xml --cov-report=lcov:coverage.lcov --cov-report=term-missing",
+    "test:all": "npm run test:coverage && npm run test:python:coverage",
+    "coverage": "./scripts/coverage.sh",
+    "coverage:clean": "./scripts/coverage.sh --skip-upload",
+    "coverage:ci": "./scripts/coverage.sh --skip-cleanup",
+    "coverage:report": "node scripts/coverage-report.js",
+    "coverage:view": "open coverage/index.html && open smartsheet_ops/coverage/index.html",
+    "coverage:combined": "open coverage-combined/index.html",
+    "coverage:open": "./scripts/coverage.sh --open",
+    "badges": "node scripts/generate-badges.js",
+    "badges:update": "npm run coverage:clean && npm run badges",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "typecheck": "tsc --noEmit",
+    "ci:check": "./scripts/check-ci-ready.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
@@ -37,7 +57,14 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.0",
     "@types/node": "^20.11.24",
-    "typescript": "^5.3.3"
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.3.3",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "prettier": "^3.2.0"
   }
 }
