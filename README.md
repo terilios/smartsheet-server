@@ -1,8 +1,7 @@
 # Smartsheet MCP Server
 
 <!-- Coverage and Status Badges -->
-[![CI/CD Pipeline](https://github.com/terilios/smartsheet-server/actions/workflows/ci.yml/badge.svg)](https://github.com/terilios/smartsheet-server/actions/workflows/ci.yml)
-[![Codecov Coverage](https://codecov.io/gh/terilios/smartsheet-server/branch/main/graph/badge.svg)](https://codecov.io/gh/terilios/smartsheet-server)
+[![Tests](https://github.com/terilios/smartsheet-server/actions/workflows/test.yml/badge.svg)](https://github.com/terilios/smartsheet-server/actions/workflows/test.yml)
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/terilios/smartsheet-server/releases)
 
