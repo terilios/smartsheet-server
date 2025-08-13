@@ -1,7 +1,10 @@
 # Smartsheet MCP Server
 
 <!-- Coverage and Status Badges -->
-[![Codecov Coverage](https://codecov.io/gh/terilios/smartsheet-server/branch/main/graph/badge.svg)](https://codecov.io/gh/terilios/smartsheet-server) [![CI/CD Pipeline](https://github.com/terilios/smartsheet-server/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/terilios/smartsheet-server/actions) [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE) [![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-blue.svg?style=flat-square)](https://github.com/terilios/smartsheet-server/releases)
+[![CI/CD Pipeline](https://github.com/terilios/smartsheet-server/actions/workflows/ci.yml/badge.svg)](https://github.com/terilios/smartsheet-server/actions/workflows/ci.yml)
+[![Codecov Coverage](https://codecov.io/gh/terilios/smartsheet-server/branch/main/graph/badge.svg)](https://codecov.io/gh/terilios/smartsheet-server)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/terilios/smartsheet-server/releases)
 
 [![Node.js Versions](https://img.shields.io/badge/Node.js-16%20%7C%2018%20%7C%2020-green.svg?style=flat-square&logo=node.js&logoColor=white)](package.json) [![Python Versions](https://img.shields.io/badge/Python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11-blue.svg?style=flat-square&logo=python&logoColor=white)](smartsheet_ops/setup.py)
 
